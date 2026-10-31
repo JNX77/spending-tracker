@@ -149,7 +149,16 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
 .tab .i{transition:transform .15s ease}
 .tab.on .i{transform:translateY(-2px)}
 .entry:active{background:var(--surface-2)}
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+/* iPhone "Reduce Motion" on: keep smooth fades, drop sliding/zooming */
+@media (prefers-reduced-motion:reduce){
+  .backdrop .sheet{transform:none;opacity:0;transition:opacity .25s ease}
+  .backdrop.open .sheet{opacity:1}
+  @keyframes fadeUp{from{opacity:0}to{opacity:1}}
+  @keyframes slideL{from{opacity:0}to{opacity:1}}
+  @keyframes slideR{from{opacity:0}to{opacity:1}}
+  .entry.out{transform:none}
+  .toast,.toast.show{transform:translateX(-50%)}
+}
 
 /* accounts */
 .acc-chips{display:flex;gap:8px;flex-wrap:wrap}
@@ -347,12 +356,12 @@ function parseBalance(str){
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 function replay(el, cls){ if (!el) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
 function openLayer(el){ clearTimeout(el._t); el.classList.remove('hidden'); void el.offsetWidth; el.classList.add('open'); }
-function closeLayer(el, after){ el.classList.remove('open'); clearTimeout(el._t); el._t = setTimeout(() => { el.classList.add('hidden'); after && after(); }, reduceMotion ? 0 : 340); }
+function closeLayer(el, after){ el.classList.remove('open'); clearTimeout(el._t); el._t = setTimeout(() => { el.classList.add('hidden'); after && after(); }, 340); }
 /* animated count-up for big totals */
 function countTo(el, minor){
   const from = el._v ?? 0; el._v = minor;
   const show = v => el.innerHTML = `<small>JD</small>${money(Math.round(v))}`;
-  if (reduceMotion || from === minor) return show(minor);
+  if (from === minor) return show(minor);
   const t0 = performance.now(), dur = 450; cancelAnimationFrame(el._raf);
   const step = t => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); show(from + (minor - from) * e); if (k < 1) el._raf = requestAnimationFrame(step); };
   el._raf = requestAnimationFrame(step);
