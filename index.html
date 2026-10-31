@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Spending">
+<meta name="theme-color" content="#0e1412">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<title>Spending</title>
+<style>
+:root{
+  --bg:#f4f6f5; --surface:#ffffff; --surface-2:#eef1ef; --text:#141a17; --muted:#6b756f;
+  --line:#e1e6e3; --accent:#0f7a55; --accent-ink:#ffffff; --danger:#c2362b;
+  --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0e1412; --surface:#171f1c; --surface-2:#1f2925; --text:#eef3f0; --muted:#8f9b95;
+    --line:#26312c; --accent:#3ccf91; --accent-ink:#06150e; --danger:#ff6b5e;
+    --shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text)}
+body{font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  padding:calc(env(safe-area-inset-top) + 8px) 16px calc(env(safe-area-inset-bottom) + 96px);
+  min-height:100vh;-webkit-user-select:none;user-select:none}
+input,textarea{-webkit-user-select:text;user-select:text}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.hidden{display:none!important}
+.num{font-variant-numeric:tabular-nums}
+
+/* header */
+.top{display:flex;align-items:center;justify-content:space-between;margin:6px 0 14px}
+.top h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin:0}
+.top .sub{color:var(--muted);font-size:14px}
+
+/* nav row */
+.navrow{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.navrow .lbl{flex:1;text-align:center;font-weight:600}
+.iconbtn{width:40px;height:40px;border-radius:12px;background:var(--surface);box-shadow:var(--shadow);
+  display:grid;place-items:center;font-size:20px}
+.pill{padding:8px 12px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow);font-size:14px;font-weight:600}
+
+.card{background:var(--surface);border-radius:18px;box-shadow:var(--shadow);padding:16px;margin-bottom:12px}
+.total{font-size:40px;font-weight:700;letter-spacing:-.02em}
+.total small{font-size:18px;color:var(--muted);font-weight:600;margin-right:6px}
+.meta{color:var(--muted);font-size:14px}
+
+/* entries */
+.list{display:flex;flex-direction:column}
+.entry{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line);text-align:left;width:100%}
+.entry:last-child{border-bottom:0}
+.dot{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:20px;flex:none}
+.entry .mid{flex:1;min-width:0}
+.entry .cat{font-weight:600}
+.entry .note{color:var(--muted);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.entry .amt{font-weight:700}
+.empty{color:var(--muted);text-align:center;padding:28px 8px}
+
+/* month bars */
+.bar{margin:12px 0}
+.bar .row{display:flex;justify-content:space-between;font-size:15px;margin-bottom:6px}
+.bar .track{height:10px;border-radius:6px;background:var(--surface-2);overflow:hidden}
+.bar .fill{height:100%;border-radius:6px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.stat{background:var(--surface);border-radius:16px;box-shadow:var(--shadow);padding:12px 14px}
+.stat b{display:block;font-size:20px}
+
+/* settings */
+.setbtn{display:block;width:100%;text-align:left;padding:14px 4px;border-bottom:1px solid var(--line);font-weight:600}
+.setbtn:last-child{border-bottom:0}
+.setbtn span{display:block;color:var(--muted);font-weight:400;font-size:14px}
+.banner{background:var(--surface-2);border-radius:14px;padding:12px 14px;font-size:14px;margin-bottom:12px;color:var(--text)}
+
+/* tab bar */
+.tabbar{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-around;
+  padding:8px 8px calc(env(safe-area-inset-bottom) + 8px);background:var(--surface);border-top:1px solid var(--line);z-index:5}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--muted);padding:4px 0}
+.tab .i{font-size:20px}
+.tab.on{color:var(--accent);font-weight:600}
+.fab{position:fixed;right:20px;bottom:calc(env(safe-area-inset-bottom) + 76px);width:60px;height:60px;border-radius:20px;
+  background:var(--accent);color:var(--accent-ink);font-size:32px;font-weight:300;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:6}
+
+/* sheet */
+.backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10;display:flex;align-items:flex-end}
+.sheet{background:var(--bg);width:100%;max-height:92vh;overflow:auto;border-radius:22px 22px 0 0;
+  padding:12px 16px calc(env(safe-area-inset-bottom) + 16px)}
+.grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 12px}
+.sheethead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.sheethead h2{margin:0;font-size:20px}
+.amtwrap{display:flex;align-items:baseline;gap:8px;background:var(--surface);border-radius:16px;padding:10px 16px;box-shadow:var(--shadow)}
+.amtwrap span{font-weight:700;color:var(--muted);font-size:22px}
+.amtwrap input{flex:1;min-width:0;border:0;background:none;color:var(--text);font-size:40px;font-weight:700;outline:none;padding:0}
+.label{font-size:13px;color:var(--muted);margin:14px 2px 6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.cats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.chip{background:var(--surface);border-radius:14px;padding:10px 4px;text-align:center;box-shadow:var(--shadow);font-size:13px;font-weight:600;border:2px solid transparent}
+.chip .e{display:block;font-size:22px;margin-bottom:2px}
+.chip.on{border-color:var(--accent)}
+.field{width:100%;border:0;background:var(--surface);color:var(--text);border-radius:14px;padding:12px 14px;font-size:16px;box-shadow:var(--shadow);outline:none}
+input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
+.photo{display:flex;gap:10px;align-items:center}
+.photo .add{background:var(--surface);border-radius:14px;padding:12px 14px;box-shadow:var(--shadow);font-weight:600}
+.thumb{width:64px;height:64px;border-radius:12px;object-fit:cover;background:var(--surface-2)}
+.err{color:var(--danger);font-size:14px;min-height:20px;margin-top:6px}
+.actions{display:flex;gap:10px;margin-top:10px}
+.primary{flex:1;background:var(--accent);color:var(--accent-ink);border-radius:16px;padding:16px;font-weight:700;font-size:17px}
+.danger{background:var(--surface);color:var(--danger);border-radius:16px;padding:16px 18px;font-weight:700;box-shadow:var(--shadow)}
+
+/* photo viewer */
+.viewer{position:fixed;inset:0;background:#000;z-index:20;display:flex;align-items:center;justify-content:center}
+.viewer img{max-width:100%;max-height:100%}
+.viewer button{position:absolute;top:calc(env(safe-area-inset-top) + 10px);right:16px;color:#fff;font-size:30px;width:44px;height:44px}
+
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 150px);transform:translateX(-50%);
+  background:var(--text);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;z-index:30;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div><h1 id="title">Today</h1><div class="sub" id="subtitle"></div></div>
+</header>
+
+<!-- DAY VIEW -->
+<section id="view-day">
+  <div id="installHint" class="banner hidden">📲 To keep your data safe, open this from your Home Screen: tap <b>Share</b> → <b>Add to Home Screen</b>, then always launch it from that icon.</div>
+  <div class="navrow">
+    <button class="iconbtn" id="dayPrev" aria-label="Previous day">‹</button>
+    <div class="lbl" id="dayLabel"></div>
+    <button class="iconbtn" id="dayNext" aria-label="Next day">›</button>
+    <button class="pill" id="dayToday">Today</button>
+  </div>
+  <div class="card">
+    <div class="meta">Spent this day</div>
+    <div class="total num" id="dayTotal"></div>
+    <div class="meta" id="dayMeta"></div>
+  </div>
+  <div class="card"><div class="list" id="dayList"></div></div>
+</section>
+
+<!-- MONTH VIEW -->
+<section id="view-month" class="hidden">
+  <div class="navrow">
+    <button class="iconbtn" id="monPrev" aria-label="Previous month">‹</button>
+    <div class="lbl" id="monLabel"></div>
+    <button class="iconbtn" id="monNext" aria-label="Next month">›</button>
+  </div>
+  <div class="card">
+    <div class="meta">Spent this month</div>
+    <div class="total num" id="monTotal"></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><span class="meta">Daily average</span><b class="num" id="monAvg"></b></div>
+    <div class="stat"><span class="meta">Entries</span><b class="num" id="monCount"></b></div>
+  </div>
+  <div class="card"><div class="meta">By category</div><div id="monBars"></div></div>
+  <div class="card"><div class="meta">By day</div><div class="list" id="monDays"></div></div>
+</section>
+
+<!-- SETTINGS VIEW -->
+<section id="view-settings" class="hidden">
+  <div class="card">
+    <div class="meta">Storage</div>
+    <div id="storeInfo" style="margin-top:6px"></div>
+  </div>
+  <div class="card">
+    <button class="setbtn" id="expCsv">Export spreadsheet (CSV)<span>For Excel / Numbers / Google Sheets</span></button>
+    <button class="setbtn" id="expJson">Back up everything<span>One file with all entries and bill photos — save it to Files or iCloud</span></button>
+    <button class="setbtn" id="impJson">Restore from backup<span>Merges a backup file into this phone</span></button>
+    <input type="file" id="impFile" accept="application/json,.json" class="hidden">
+  </div>
+  <div class="meta" style="text-align:center">Data lives only on this phone. Back up regularly.</div>
+</section>
+
+<button class="fab" id="fab" aria-label="Add expense">+</button>
+
+<nav class="tabbar">
+  <button class="tab on" data-tab="day"><span class="i">📅</span>Day</button>
+  <button class="tab" data-tab="month"><span class="i">📊</span>Month</button>
+  <button class="tab" data-tab="settings"><span class="i">⚙️</span>Settings</button>
+</nav>
+
+<!-- ADD / EDIT SHEET -->
+<div class="backdrop hidden" id="sheetWrap">
+  <form class="sheet" id="form" autocomplete="off" novalidate>
+    <div class="grab"></div>
+    <div class="sheethead"><h2 id="sheetTitle">New expense</h2><button type="button" class="pill" id="cancel">Cancel</button></div>
+    <div class="amtwrap"><span>JD</span><input id="amount" inputmode="decimal" placeholder="0.00" aria-label="Amount in Jordanian dinars"></div>
+    <div class="label">Category</div>
+    <div class="cats" id="cats"></div>
+    <div class="label">Date</div>
+    <input type="date" class="field" id="date">
+    <div class="label">Note (optional)</div>
+    <input class="field" id="note" placeholder="e.g. Shawarma, Careem home" maxlength="140">
+    <div class="label">Bill photo (optional)</div>
+    <div class="photo">
+      <label class="add" for="photoIn" id="photoBtn">📷 Add photo</label>
+      <input type="file" id="photoIn" accept="image/*" class="hidden">
+      <img class="thumb hidden" id="thumb" alt="Bill photo">
+      <button type="button" class="pill hidden" id="photoRm">Remove</button>
+    </div>
+    <div class="err" id="err"></div>
+    <div class="actions">
+      <button type="button" class="danger hidden" id="del">Delete</button>
+      <button type="submit" class="primary" id="save">Save</button>
+    </div>
+  </form>
+</div>
+
+<div class="viewer hidden" id="viewer"><img id="viewerImg" alt="Bill photo"><button id="viewerClose" aria-label="Close">✕</button></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- config ---------- */
+const CATS = [
+  {id:'food',          name:'Food',           e:'🍔', c:'#f59e0b'},
+  {id:'groceries',     name:'Groceries',      e:'🛒', c:'#22c55e'},
+  {id:'transport',     name:'Transportation', e:'🚕', c:'#3b82f6'},
+  {id:'entertainment', name:'Entertainment',  e:'🎬', c:'#a855f7'},
+  {id:'missus',        name:'The Missus',     e:'💝', c:'#ec4899'},
+  {id:'personal',      name:'Personal',       e:'🧍', c:'#64748b'},
+];
+const CAT = Object.fromEntries(CATS.map(c=>[c.id,c]));
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const pad = n => String(n).padStart(2,'0');
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parseYmd = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+const addDays = (s,n) => { const d = parseYmd(s); d.setDate(d.getDate()+n); return ymd(d); };
+const today = () => ymd(new Date());
+const money = minor => (minor/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const jd = minor => 'JD ' + money(minor);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2));
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast.h); toast.h=setTimeout(()=>t.classList.remove('show'),1800); }
+function dayLabel(s){
+  if (s === today()) return 'Today';
+  if (s === addDays(today(),-1)) return 'Yesterday';
+  return parseYmd(s).toLocaleDateString('en-GB',{weekday:'short', day:'numeric', month:'short', year: s.slice(0,4)===today().slice(0,4)?undefined:'numeric'});
+}
+/* "3.5", "3,50", "12" -> integer piasters (x100); null if invalid */
+function parseAmount(str){
+  const s = String(str).trim().replace(',', '.');
+  if (!/^\d{1,7}(\.\d{0,2})?$/.test(s) && !/^\.\d{1,2}$/.test(s)) return null;
+  const v = Math.round(parseFloat(s) * 100);
+  return v > 0 ? v : null;
+}
+
+/* ---------- IndexedDB ---------- */
+let dbP;
+function db(){
+  return dbP ||= new Promise((res, rej) => {
+    const r = indexedDB.open('spending', 1);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      d.createObjectStore('entries', {keyPath:'id'}).createIndex('date','date');
+      d.createObjectStore('photos');
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+const rq = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+const done = t => new Promise((res, rej) => { t.oncomplete = () => res(); t.onerror = t.onabort = () => rej(t.error); });
+async function entriesBetween(from, to){
+  const t = (await db()).transaction('entries');
+  return rq(t.objectStore('entries').index('date').getAll(IDBKeyRange.bound(from, to)));
+}
+async function allEntries(){ return rq((await db()).transaction('entries').objectStore('entries').getAll()); }
+/* photo: undefined = keep, null = remove, Blob = set */
+async function saveEntry(e, photo){
+  const t = (await db()).transaction(['entries','photos'], 'readwrite');
+  t.objectStore('entries').put(e);
+  if (photo === null) t.objectStore('photos').delete(e.id);
+  else if (photo) t.objectStore('photos').put(photo, e.id);
+  return done(t);
+}
+async function deleteEntry(id){
+  const t = (await db()).transaction(['entries','photos'], 'readwrite');
+  t.objectStore('entries').delete(id); t.objectStore('photos').delete(id);
+  return done(t);
+}
+async function getPhoto(id){ return rq((await db()).transaction('photos').objectStore('photos').get(id)); }
+
+/* ---------- image shrink (keeps storage small) ---------- */
+function shrinkImage(file, max = 1600, q = 0.8){
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(b => b ? res(b) : rej(new Error('Could not read photo')), 'image/jpeg', q);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('Could not read photo')); };
+    img.src = url;
+  });
+}
+
+/* ---------- state ---------- */
+const state = { tab:'day', day: today(), month: today().slice(0,7), editing:null, cat:null, photo:undefined, thumbUrl:null };
+
+/* ---------- rendering ---------- */
+function entryRow(e){
+  const c = CAT[e.cat] || CAT.personal;
+  const time = new Date(e.createdAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  return `<button class="entry" data-id="${e.id}">
+    <span class="dot" style="background:${c.c}22">${c.e}</span>
+    <span class="mid"><div class="cat">${esc(c.name)}${e.hasPhoto?' 🧾':''}</div>
+      <div class="note">${esc(e.note || time)}</div></span>
+    <span class="amt num">${money(e.amount)}</span></button>`;
+}
+
+async function renderDay(){
+  const d = state.day;
+  $('#dayLabel').textContent = dayLabel(d);
+  $('#dayNext').disabled = d >= today();
+  $('#dayNext').style.opacity = d >= today() ? .35 : 1;
+  const items = (await entriesBetween(d, d)).sort((a,b) => b.createdAt - a.createdAt);
+  const total = items.reduce((s,e) => s + e.amount, 0);
+  $('#dayTotal').innerHTML = `<small>JD</small>${money(total)}`;
+  const m = d.slice(0,7);
+  const monthItems = await entriesBetween(m + '-01', m + '-31');
+  $('#dayMeta').textContent = `${items.length} ${items.length===1?'entry':'entries'} · ${parseYmd(d).toLocaleDateString('en-GB',{month:'long'})} so far: ${jd(monthItems.filter(e=>e.date<=d).reduce((s,e)=>s+e.amount,0))}`;
+  $('#dayList').innerHTML = items.length ? items.map(entryRow).join('') : `<div class="empty">Nothing logged ${d===today()?'yet today':'this day'}.<br>Tap <b>+</b> to add an expense.</div>`;
+}
+
+async function renderMonth(){
+  const [y, mo] = state.month.split('-').map(Number);
+  const first = `${state.month}-01`, last = ymd(new Date(y, mo, 0));
+  $('#monLabel').textContent = new Date(y, mo-1, 1).toLocaleDateString('en-GB',{month:'long', year:'numeric'});
+  const isCur = state.month === today().slice(0,7);
+  $('#monNext').disabled = isCur; $('#monNext').style.opacity = isCur ? .35 : 1;
+  const items = await entriesBetween(first, last);
+  const total = items.reduce((s,e) => s + e.amount, 0);
+  const daysCounted = isCur ? new Date().getDate() : new Date(y, mo, 0).getDate();
+  $('#monTotal').innerHTML = `<small>JD</small>${money(total)}`;
+  $('#monAvg').textContent = jd(Math.round(total / daysCounted));
+  $('#monCount').textContent = items.length;
+
+  const byCat = {}; items.forEach(e => byCat[e.cat] = (byCat[e.cat]||0) + e.amount);
+  const rows = CATS.filter(c => byCat[c.id]).sort((a,b) => byCat[b.id]-byCat[a.id]);
+  $('#monBars').innerHTML = rows.length ? rows.map(c => {
+    const v = byCat[c.id], pct = total ? Math.round(v/total*100) : 0;
+    return `<div class="bar"><div class="row"><span>${c.e} ${esc(c.name)}</span><span class="num"><b>${money(v)}</b> <span class="meta">${pct}%</span></span></div>
+      <div class="track"><div class="fill" style="width:${Math.max(pct,2)}%;background:${c.c}"></div></div></div>`;
+  }).join('') : '<div class="empty">No spending this month.</div>';
+
+  const byDay = {}; items.forEach(e => byDay[e.date] = (byDay[e.date]||0) + e.amount);
+  const days = Object.keys(byDay).sort().reverse();
+  $('#monDays').innerHTML = days.length ? days.map(d =>
+    `<button class="entry" data-day="${d}"><span class="mid"><div class="cat">${esc(dayLabel(d))}</div></span><span class="amt num">${money(byDay[d])}</span></button>`
+  ).join('') : '<div class="empty">—</div>';
+}
+
+async function renderSettings(){
+  let persisted = false, usage = '';
+  try { persisted = await navigator.storage?.persisted?.(); } catch {}
+  try { const est = await navigator.storage?.estimate?.(); if (est?.usage != null) usage = ` · ${(est.usage/1048576).toFixed(1)} MB used`; } catch {}
+  const n = (await allEntries()).length;
+  $('#storeInfo').innerHTML = `${n} entries saved${usage}<div class="meta" style="margin-top:4px">${persisted ? '✅ Protected storage granted' : (isStandalone() ? 'Running from Home Screen ✅' : '⚠️ Not on Home Screen — Safari may clear data after 7 days unused')}</div>`;
+}
+
+function render(){
+  const titles = {day:'Spending', month:'Reports', settings:'Settings'};
+  $('#title').textContent = titles[state.tab];
+  $('#subtitle').textContent = state.tab === 'day' ? 'Jordanian dinars' : '';
+  ['day','month','settings'].forEach(t => $('#view-'+t).classList.toggle('hidden', t !== state.tab));
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === state.tab));
+  $('#fab').classList.toggle('hidden', state.tab === 'settings');
+  return ({day:renderDay, month:renderMonth, settings:renderSettings})[state.tab]();
+}
+
+/* ---------- sheet (add / edit) ---------- */
+function setThumb(blob){
+  if (state.thumbUrl) URL.revokeObjectURL(state.thumbUrl);
+  state.thumbUrl = blob ? URL.createObjectURL(blob) : null;
+  $('#thumb').src = state.thumbUrl || '';
+  $('#thumb').classList.toggle('hidden', !blob);
+  $('#photoRm').classList.toggle('hidden', !blob);
+  $('#photoBtn').textContent = blob ? '📷 Change' : '📷 Add photo';
+}
+function pickCat(id){
+  state.cat = id;
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.cat === id));
+}
+async function openSheet(entry){
+  state.editing = entry || null; state.photo = undefined;
+  $('#sheetTitle').textContent = entry ? 'Edit expense' : 'New expense';
+  $('#amount').value = entry ? (entry.amount/100).toFixed(2) : '';
+  $('#note').value = entry?.note || '';
+  $('#date').value = entry?.date || (state.tab === 'day' ? state.day : today());
+  $('#date').max = today();
+  $('#err').textContent = '';
+  $('#del').classList.toggle('hidden', !entry);
+  pickCat(entry?.cat || null);
+  setThumb(entry?.hasPhoto ? await getPhoto(entry.id) : null);
+  $('#sheetWrap').classList.remove('hidden');
+  if (!entry) setTimeout(() => $('#amount').focus(), 50);
+}
+function closeSheet(){ $('#sheetWrap').classList.add('hidden'); $('#amount').blur(); setThumb(null); }
+
+$('#cats').innerHTML = CATS.map(c => `<button type="button" class="chip" data-cat="${c.id}"><span class="e">${c.e}</span>${esc(c.name)}</button>`).join('');
+$('#cats').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) pickCat(b.dataset.cat); });
+
+$('#photoIn').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try { state.photo = await shrinkImage(f); setThumb(state.photo); }
+  catch(err){ $('#err').textContent = err.message; }
+});
+$('#photoRm').addEventListener('click', () => { state.photo = null; setThumb(null); });
+$('#thumb').addEventListener('click', () => showPhoto($('#thumb').src));
+
+$('#form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const amount = parseAmount($('#amount').value);
+  if (amount == null) return $('#err').textContent = 'Enter an amount like 3.50 (up to 2 decimals).';
+  if (!state.cat) return $('#err').textContent = 'Pick a category.';
+  const date = $('#date').value || today();
+  const prev = state.editing;
+  const hasPhoto = state.photo === undefined ? !!prev?.hasPhoto : !!state.photo;
+  const entry = {
+    id: prev?.id || uid(), amount, cat: state.cat, date,
+    note: $('#note').value.trim(), hasPhoto,
+    createdAt: prev?.createdAt || Date.now(), updatedAt: Date.now(),
+  };
+  try {
+    await saveEntry(entry, state.photo);
+  } catch(err) {
+    return $('#err').textContent = 'Could not save: ' + (err?.message || err);
+  }
+  closeSheet();
+  if (state.tab === 'day') state.day = date;
+  toast(prev ? 'Updated' : `Saved ${jd(amount)}`);
+  render();
+});
+$('#del').addEventListener('click', async () => {
+  if (!state.editing || !confirm('Delete this expense?')) return;
+  await deleteEntry(state.editing.id); closeSheet(); toast('Deleted'); render();
+});
+$('#cancel').addEventListener('click', closeSheet);
+$('#sheetWrap').addEventListener('click', e => { if (e.target.id === 'sheetWrap') closeSheet(); });
+
+/* ---------- photo viewer ---------- */
+function showPhoto(src){ $('#viewerImg').src = src; $('#viewer').classList.remove('hidden'); }
+$('#viewerClose').addEventListener('click', () => $('#viewer').classList.add('hidden'));
+
+/* ---------- list taps ---------- */
+$('#dayList').addEventListener('click', async e => {
+  const b = e.target.closest('.entry'); if (!b) return;
+  const all = await entriesBetween(state.day, state.day);
+  openSheet(all.find(x => x.id === b.dataset.id));
+});
+$('#monDays').addEventListener('click', e => {
+  const b = e.target.closest('.entry'); if (!b) return;
+  state.day = b.dataset.day; state.tab = 'day'; render();
+});
+
+/* ---------- navigation ---------- */
+$('#dayPrev').onclick = () => { state.day = addDays(state.day, -1); renderDay(); };
+$('#dayNext').onclick = () => { if (state.day < today()) { state.day = addDays(state.day, 1); renderDay(); } };
+$('#dayToday').onclick = () => { state.day = today(); renderDay(); };
+const shiftMonth = n => { const [y,m] = state.month.split('-').map(Number); const d = new Date(y, m-1+n, 1); state.month = ymd(d).slice(0,7); renderMonth(); };
+$('#monPrev').onclick = () => shiftMonth(-1);
+$('#monNext').onclick = () => { if (state.month < today().slice(0,7)) shiftMonth(1); };
+document.querySelectorAll('.tab').forEach(b => b.onclick = () => { state.tab = b.dataset.tab; render(); });
+$('#fab').onclick = () => openSheet();
+
+/* ---------- export / backup / restore ---------- */
+async function deliverFile(name, blob){
+  const file = new File([blob], name, {type: blob.type});
+  if (navigator.canShare?.({files:[file]})) {
+    try { await navigator.share({files:[file], title:name}); return; }
+    catch(e){ if (e.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+const csvCell = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : String(v);
+$('#expCsv').onclick = async () => {
+  const rows = (await allEntries()).sort((a,b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
+  const lines = [['Date','Time','Category','Amount (JOD)','Note','Has photo']];
+  rows.forEach(e => lines.push([e.date, new Date(e.createdAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),
+    (CAT[e.cat]||{name:e.cat}).name, (e.amount/100).toFixed(2), e.note||'', e.hasPhoto?'yes':'no']));
+  const csv = '﻿' + lines.map(r => r.map(csvCell).join(',')).join('\r\n');
+  deliverFile(`spending-${today()}.csv`, new Blob([csv], {type:'text/csv'}));
+};
+const blobToDataUrl = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
+$('#expJson').onclick = async () => {
+  toast('Preparing backup…');
+  const entries = await allEntries(), photos = {};
+  for (const e of entries) if (e.hasPhoto) { const p = await getPhoto(e.id); if (p) photos[e.id] = await blobToDataUrl(p); }
+  const data = {app:'spending-tracker', version:1, exportedAt:new Date().toISOString(), entries, photos};
+  deliverFile(`spending-backup-${today()}.json`, new Blob([JSON.stringify(data)], {type:'application/json'}));
+};
+$('#impJson').onclick = () => $('#impFile').click();
+$('#impFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    if (data.app !== 'spending-tracker' || !Array.isArray(data.entries)) throw new Error('Not a spending backup file');
+    let n = 0;
+    for (const en of data.entries) {
+      if (!en.id || !Number.isInteger(en.amount) || !/^\d{4}-\d{2}-\d{2}$/.test(en.date)) continue;
+      const src = data.photos?.[en.id];
+      const blob = src ? await (await fetch(src)).blob() : undefined;
+      await saveEntry({...en, hasPhoto: !!blob || !!en.hasPhoto}, blob); n++;
+    }
+    toast(`Restored ${n} entries`); render();
+  } catch(err) { alert('Restore failed: ' + err.message); }
+});
+
+/* ---------- startup ---------- */
+function isStandalone(){ return navigator.standalone === true || matchMedia('(display-mode: standalone)').matches; }
+$('#installHint').classList.toggle('hidden', isStandalone());
+try { navigator.storage?.persist?.(); } catch {}
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+render();
+</script>
+</body>
+</html>
