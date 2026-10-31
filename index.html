@@ -7,23 +7,18 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Spending">
-<meta name="theme-color" content="#0e1412">
+<meta name="theme-color" content="#000000">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>Spending</title>
 <style>
+/* Black & orange theme (same in light and dark mode) */
 :root{
-  --bg:#f4f6f5; --surface:#ffffff; --surface-2:#eef1ef; --text:#141a17; --muted:#6b756f;
-  --line:#e1e6e3; --accent:#0f7a55; --accent-ink:#ffffff; --danger:#c2362b;
-  --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.06);
-}
-@media (prefers-color-scheme:dark){
-  :root{
-    --bg:#0e1412; --surface:#171f1c; --surface-2:#1f2925; --text:#eef3f0; --muted:#8f9b95;
-    --line:#26312c; --accent:#3ccf91; --accent-ink:#06150e; --danger:#ff6b5e;
-    --shadow:0 1px 2px rgba(0,0,0,.4);
-  }
+  color-scheme:dark;
+  --bg:#000000; --surface:#121212; --surface-2:#1e1e1e; --text:#ffffff; --muted:#9a9a9a;
+  --line:#262626; --accent:#ff7a00; --accent-ink:#000000; --danger:#ff4d4d;
+  --shadow:0 0 0 1px #1c1c1c;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--text)}
@@ -44,12 +39,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .navrow{display:flex;align-items:center;gap:8px;margin-bottom:12px}
 .navrow .lbl{flex:1;text-align:center;font-weight:600}
 .iconbtn{width:40px;height:40px;border-radius:12px;background:var(--surface);box-shadow:var(--shadow);
-  display:grid;place-items:center;font-size:20px}
-.pill{padding:8px 12px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow);font-size:14px;font-weight:600}
+  display:grid;place-items:center;font-size:20px;color:var(--accent)}
+.pill{padding:8px 12px;border-radius:999px;background:var(--surface);color:var(--accent);box-shadow:var(--shadow);font-size:14px;font-weight:600}
 
 .card{background:var(--surface);border-radius:18px;box-shadow:var(--shadow);padding:16px;margin-bottom:12px}
 .total{font-size:40px;font-weight:700;letter-spacing:-.02em}
-.total small{font-size:18px;color:var(--muted);font-weight:600;margin-right:6px}
+.total small{font-size:18px;color:var(--accent);font-weight:600;margin-right:6px}
 .meta{color:var(--muted);font-size:14px}
 
 /* entries */
@@ -85,7 +80,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .tab .i{font-size:20px}
 .tab.on{color:var(--accent);font-weight:600}
 .fab{position:fixed;right:20px;bottom:calc(env(safe-area-inset-bottom) + 76px);width:60px;height:60px;border-radius:20px;
-  background:var(--accent);color:var(--accent-ink);font-size:32px;font-weight:300;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:6}
+  background:var(--accent);color:var(--accent-ink);font-size:32px;font-weight:400;box-shadow:0 6px 24px rgba(255,122,0,.35);z-index:6}
 
 /* sheet */
 .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10;display:flex;align-items:flex-end}
@@ -95,13 +90,13 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .sheethead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .sheethead h2{margin:0;font-size:20px}
 .amtwrap{display:flex;align-items:baseline;gap:8px;background:var(--surface);border-radius:16px;padding:10px 16px;box-shadow:var(--shadow)}
-.amtwrap span{font-weight:700;color:var(--muted);font-size:22px}
-.amtwrap input{flex:1;min-width:0;border:0;background:none;color:var(--text);font-size:40px;font-weight:700;outline:none;padding:0}
+.amtwrap span{font-weight:700;color:var(--accent);font-size:22px}
+.amtwrap input{flex:1;min-width:0;border:0;background:none;color:var(--text);caret-color:var(--accent);font-size:40px;font-weight:700;outline:none;padding:0}
 .label{font-size:13px;color:var(--muted);margin:14px 2px 6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
 .cats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .chip{background:var(--surface);border-radius:14px;padding:10px 4px;text-align:center;box-shadow:var(--shadow);font-size:13px;font-weight:600;border:2px solid transparent}
 .chip .e{display:block;font-size:22px;margin-bottom:2px}
-.chip.on{border-color:var(--accent)}
+.chip.on{border-color:var(--accent);background:#ff7a0018}
 .field{width:100%;border:0;background:var(--surface);color:var(--text);border-radius:14px;padding:12px 14px;font-size:16px;box-shadow:var(--shadow);outline:none}
 input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
 .photo{display:flex;gap:10px;align-items:center}
@@ -118,7 +113,7 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
 .viewer button{position:absolute;top:calc(env(safe-area-inset-top) + 10px);right:16px;color:#fff;font-size:30px;width:44px;height:44px}
 
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 150px);transform:translateX(-50%);
-  background:var(--text);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;z-index:30;opacity:0;transition:opacity .2s;pointer-events:none}
+  background:var(--accent);color:var(--accent-ink);font-weight:600;padding:10px 16px;border-radius:12px;font-size:14px;z-index:30;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
 </style>
 </head>
@@ -221,7 +216,7 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
 "use strict";
 /* ---------- config ---------- */
 const CATS = [
-  {id:'food',          name:'Food',           e:'🍔', c:'#f59e0b'},
+  {id:'food',          name:'Food',           e:'🍔', c:'#facc15'},
   {id:'groceries',     name:'Groceries',      e:'🛒', c:'#22c55e'},
   {id:'transport',     name:'Transportation', e:'🚕', c:'#3b82f6'},
   {id:'entertainment', name:'Entertainment',  e:'🎬', c:'#a855f7'},
