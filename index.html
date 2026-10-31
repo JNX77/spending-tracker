@@ -149,15 +149,13 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
 .tab .i{transition:transform .15s ease}
 .tab.on .i{transform:translateY(-2px)}
 .entry:active{background:var(--surface-2)}
-/* iPhone "Reduce Motion" on: keep smooth fades, drop sliding/zooming */
-@media (prefers-reduced-motion:reduce){
-  .backdrop .sheet{transform:none;opacity:0;transition:opacity .25s ease}
-  .backdrop.open .sheet{opacity:1}
-  @keyframes fadeUp{from{opacity:0}to{opacity:1}}
-  @keyframes slideL{from{opacity:0}to{opacity:1}}
-  @keyframes slideR{from{opacity:0}to{opacity:1}}
-  .entry.out{transform:none}
-  .toast,.toast.show{transform:translateX(-50%)}
+/* Gentle mode (only if "Animations: follow iPhone" is chosen and Reduce Motion is on): fades only */
+@keyframes fadeOnly{from{opacity:0}to{opacity:1}}
+.rm .backdrop .sheet{transform:none;opacity:0;transition:opacity .25s ease}
+.rm .backdrop.open .sheet{opacity:1}
+.rm .enter,.rm .enter > *,.rm .slide-l,.rm .slide-r{animation-name:fadeOnly}
+.rm .entry.out{transform:none}
+.rm .toast,.rm .toast.show{transform:translateX(-50%)}
 }
 
 /* accounts */
@@ -238,6 +236,9 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
   <div class="card">
     <div class="meta">Storage</div>
     <div id="storeInfo" style="margin-top:6px"></div>
+  </div>
+  <div class="card">
+    <button class="setbtn" id="motionBtn">Animations<span id="motionLbl"></span></button>
   </div>
   <div class="card">
     <button class="setbtn" id="expCsv">Export spreadsheet (CSV)<span>For Excel / Numbers / Google Sheets</span></button>
@@ -353,7 +354,14 @@ function parseBalance(str){
 }
 
 /* ---------- motion helpers ---------- */
-const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+/* Animations: 'full' (default, ignores iPhone Reduce Motion) or 'system' (follows it) */
+const rmQuery = matchMedia('(prefers-reduced-motion: reduce)');
+function motionPref(){ try { return localStorage.getItem('motion') || 'full'; } catch { return 'full'; } }
+function applyMotion(){
+  document.documentElement.classList.toggle('rm', motionPref() === 'system' && rmQuery.matches);
+  const l = document.getElementById('motionLbl');
+  if (l) l.textContent = motionPref() === 'full' ? 'Full — always on (tap to follow iPhone Reduce Motion)' : 'Following iPhone Reduce Motion (tap for full animations)';
+}
 function replay(el, cls){ if (!el) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
 function openLayer(el){ clearTimeout(el._t); el.classList.remove('hidden'); void el.offsetWidth; el.classList.add('open'); }
 function closeLayer(el, after){ el.classList.remove('open'); clearTimeout(el._t); el._t = setTimeout(() => { el.classList.add('hidden'); after && after(); }, 340); }
@@ -780,6 +788,9 @@ $('#impFile').addEventListener('change', async e => {
 });
 
 /* ---------- startup ---------- */
+applyMotion();
+rmQuery.addEventListener?.('change', applyMotion);
+$('#motionBtn').onclick = () => { try { localStorage.setItem('motion', motionPref() === 'full' ? 'system' : 'full'); } catch {} applyMotion(); toast(motionPref() === 'full' ? 'Full animations on' : 'Following iPhone setting'); };
 function isStandalone(){ return navigator.standalone === true || matchMedia('(display-mode: standalone)').matches; }
 $('#installHint').classList.toggle('hidden', isStandalone());
 try { navigator.storage?.persist?.(); } catch {}

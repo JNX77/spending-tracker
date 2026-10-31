@@ -1,5 +1,5 @@
 // Network-first for the app shell so updates arrive; falls back to cache offline.
-const CACHE = 'spending-v8';
+const CACHE = 'spending-v9';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-v3-180.png', './icon-v3-192.png', './icon-v3-512.png'];
 
 self.addEventListener('install', e => {
