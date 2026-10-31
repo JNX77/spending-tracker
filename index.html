@@ -9,8 +9,8 @@
 <meta name="apple-mobile-web-app-title" content="Spending">
 <meta name="theme-color" content="#000000">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icon-180.png">
-<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-v3-180.png">
+<link rel="icon" href="icon-v3-192.png">
 <title>Spending</title>
 <style>
 /* Black & orange theme (same in light and dark mode) */
@@ -120,7 +120,7 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
 <body>
 
 <header class="top">
-  <div><h1 id="title">Today</h1><div class="sub" id="subtitle"></div></div>
+  <h1 id="title">Spending</h1>
 </header>
 
 <!-- DAY VIEW -->
@@ -370,7 +370,6 @@ async function renderSettings(){
 function render(){
   const titles = {day:'Spending', month:'Reports', settings:'Settings'};
   $('#title').textContent = titles[state.tab];
-  $('#subtitle').textContent = state.tab === 'day' ? 'Jordanian dinars' : '';
   ['day','month','settings'].forEach(t => $('#view-'+t).classList.toggle('hidden', t !== state.tab));
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === state.tab));
   $('#fab').classList.toggle('hidden', state.tab === 'settings');
