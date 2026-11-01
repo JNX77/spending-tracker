@@ -281,7 +281,7 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
     <button class="setbtn" id="impJson">Restore from backup<span>Merges a backup file into this phone</span></button>
     <input type="file" id="impFile" accept="application/json,.json" class="hidden">
   </div>
-  <div class="meta" style="text-align:center">Data lives only on this phone. Back up regularly.</div>
+  <div class="meta" style="text-align:center">Data lives only on this phone. Back up regularly.<br><span id="verLbl"></span></div>
 </section>
 
 <button class="fab" id="fab" aria-label="Add expense">+</button>
@@ -803,6 +803,14 @@ function scanStep(n){
 const scanBusy = on => { $('#scanSpin').classList.toggle('hidden', !on); document.querySelectorAll('#scan .sbar button').forEach(b => b.disabled = on); };
 
 async function openScanner(file){
+  try { await runScanner(file); }
+  catch (err) {
+    closeLayer($('#scan'));
+    try { state.photo = await shrinkImage(file); setThumb(state.photo); toast('Scanner failed — original photo attached'); }
+    catch { $('#err').textContent = 'Could not read that photo — try another one.'; }
+  }
+}
+async function runScanner(file){
   $('#scanMsg').textContent = 'Finding the receipt…';
   scanStep(1); scanBusy(true);
   openLayer($('#scan'));
@@ -1186,8 +1194,26 @@ $('#motionBtn').onclick = () => { try { localStorage.setItem('motion', motionPre
 function isStandalone(){ return navigator.standalone === true || matchMedia('(display-mode: standalone)').matches; }
 $('#installHint').classList.toggle('hidden', isStandalone());
 try { navigator.storage?.persist?.(); } catch {}
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then(r => r.update?.()).catch(() => {});
+/* ---------- auto-update: iPhone often resumes the app without reloading, so check for a newer version on every resume ---------- */
+const APP_VERSION = '2026.11.01-3';
+$('#verLbl').textContent = 'Version ' + APP_VERSION;
+const anyOverlayOpen = () => document.querySelector('.backdrop.open, .scan.open, .viewer.open');
+async function checkForUpdate(){
+  try {
+    const r = await fetch('version.txt?t=' + Date.now(), {cache:'no-store'});
+    if (!r.ok) return;
+    const v = (await r.text()).trim();
+    if (v && v !== APP_VERSION && !anyOverlayOpen()) {
+      if (sessionStorage.getItem('updTo') === v) return;   // avoid reload loops if a cache serves old HTML
+      sessionStorage.setItem('updTo', v);
+      toast('Updating to the latest version…');
+      setTimeout(() => location.reload(), 600);
+    }
+  } catch {}
+}
+checkForUpdate();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { render(); checkForUpdate(); } });
 render();
 </script>
 </body>

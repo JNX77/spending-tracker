@@ -1,5 +1,5 @@
 // Network-first for the app shell so updates arrive; falls back to cache offline.
-const CACHE = 'spending-v12';
+const CACHE = 'spending-v13';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-v3-180.png', './icon-v3-192.png', './icon-v3-512.png',
   './lib/scanic/scanic.js', './lib/xlsx.mini.min.js'];
 
@@ -13,7 +13,8 @@ self.addEventListener('activate', e => {
     .then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  const u = new URL(e.request.url);
+  if (e.request.method !== 'GET' || u.origin !== location.origin || u.pathname.endsWith('version.txt')) return;
   e.respondWith(
     // 'no-cache' revalidates with the server so a stale browser cache never serves an old page
     fetch(e.request.url, {cache: 'no-cache'})
