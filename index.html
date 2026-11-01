@@ -121,6 +121,25 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
 .danger{background:var(--surface);color:var(--danger);border-radius:16px;padding:16px 18px;font-weight:700;box-shadow:var(--shadow)}
 
 /* photo viewer */
+/* scanner */
+.scan{position:fixed;inset:0;z-index:25;background:#000;display:flex;flex-direction:column;opacity:0;transition:opacity .22s ease;
+  padding:calc(env(safe-area-inset-top) + 8px) 0 calc(env(safe-area-inset-bottom) + 10px)}
+.scan.open{opacity:1}
+.scan:not(.open){pointer-events:none}
+.scan .shead{display:flex;justify-content:space-between;align-items:center;padding:4px 16px 8px}
+.scan .shead b{font-size:17px}
+.scan .stage{flex:1;position:relative;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none}
+.scan .stage > *{max-width:100%;max-height:100%}
+#scanEditor{position:absolute;inset:0}
+#scanResult{max-width:calc(100% - 32px);max-height:100%;border-radius:6px;object-fit:contain}
+.scan .smsg{color:var(--muted);font-size:14px;text-align:center;padding:10px 16px 4px;min-height:22px}
+.scan .sbar{display:flex;gap:10px;padding:8px 16px 0}
+.scan .sbar .primary{flex:1.4}
+.scan .sbar .pill{flex:1;padding:14px 8px;font-size:15px;text-align:center}
+.scan .filters{display:flex;gap:8px;justify-content:center;padding:6px 16px 0}
+.scan .filters .chip{padding:9px 14px;font-size:14px}
+.spinner{width:34px;height:34px;border-radius:50%;border:3px solid #333;border-top-color:var(--accent);animation:spin .8s linear infinite;position:absolute}
+@keyframes spin{to{transform:rotate(360deg)}}
 .viewer{position:fixed;inset:0;background:#000;z-index:20;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .22s ease}
 .viewer.open{opacity:1}
 .viewer img{max-width:100%;max-height:100%}
@@ -257,7 +276,7 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
     <button class="setbtn" id="motionBtn">Animations<span id="motionLbl"></span></button>
   </div>
   <div class="card">
-    <button class="setbtn" id="expCsv">Export spreadsheet (CSV)<span>For Excel / Numbers / Google Sheets</span></button>
+    <button class="setbtn" id="expXlsx">Export to Excel (.xlsx)<span>Expenses, monthly summary, transfers and balance updates — opens in Excel or Numbers</span></button>
     <button class="setbtn" id="expJson">Back up everything<span>One file with all entries and bill photos — save it to Files or iCloud</span></button>
     <button class="setbtn" id="impJson">Restore from backup<span>Merges a backup file into this phone</span></button>
     <input type="file" id="impFile" accept="application/json,.json" class="hidden">
@@ -324,6 +343,20 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
       <button type="submit" class="primary off" id="trSave">Save transfer</button>
     </div>
   </form>
+</div>
+
+<!-- SCANNER -->
+<div class="scan hidden" id="scan">
+  <div class="shead"><button class="pill" id="scanCancel">Cancel</button><b id="scanTitle">Adjust corners</b><button class="pill" id="scanOriginal">Use original</button></div>
+  <div class="stage" id="scanStage"><div id="scanEditor"></div><img id="scanResult" class="hidden" alt="Scanned bill"><div class="spinner hidden" id="scanSpin"></div></div>
+  <div class="smsg" id="scanMsg"></div>
+  <div class="filters hidden" id="scanFilters">
+    <button type="button" class="chip on" data-f="bw">Clean B&amp;W</button>
+    <button type="button" class="chip" data-f="color">Color</button>
+    <button type="button" class="chip" data-f="none">No filter</button>
+  </div>
+  <div class="sbar" id="scanBar1"><button class="pill" id="scanReset">Auto-detect</button><button class="primary" id="scanGo">Scan</button></div>
+  <div class="sbar hidden" id="scanBar2"><button class="pill" id="scanBack">Re-crop</button><button class="primary" id="scanUse">Use scan</button></div>
 </div>
 
 <!-- BALANCE SHEET -->
@@ -680,9 +713,162 @@ $('#accChips').addEventListener('click', e => { const b = e.target.closest('.chi
 $('#photoIn').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
-  try { state.photo = await shrinkImage(f); setThumb(state.photo); }
+  try { await openScanner(f); }
   catch(err){ $('#err').textContent = err.message; }
 });
+
+/* ---------- receipt scanner: auto-detect edges (scanic, loaded on demand) + adjustable corners + clean-up filter ---------- */
+let scanicP = null;
+const loadScanic = () => scanicP ||= import('./lib/scanic/scanic.js');
+const scan = {src:null, editor:null, auto:null, warped:null, filter:'bw', out:null};
+
+function fileToCanvas(file, max = 2000){
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); res(c);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('Could not read photo')); };
+    img.src = url;
+  });
+}
+const canvasToBlob = (c, q = 0.82) => new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('Could not save photo')), 'image/jpeg', q));
+function fitCanvas(src, max){
+  const k = Math.min(1, max / Math.max(src.width, src.height));
+  if (k === 1) return src;
+  const c = document.createElement('canvas'); c.width = Math.round(src.width * k); c.height = Math.round(src.height * k);
+  c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); return c;
+}
+const insetCorners = (w, h, m = 0.08) => ({topLeft:{x:w*m,y:h*m}, topRight:{x:w*(1-m),y:h*m}, bottomRight:{x:w*(1-m),y:h*(1-m)}, bottomLeft:{x:w*m,y:h*(1-m)}});
+
+/* "Scanner look": estimate the paper/background brightness (shadows, uneven light) on a small copy,
+   then divide it out so paper becomes white and text stays dark. */
+function enhance(src, mode){
+  const w = src.width, h = src.height;
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const ctx = out.getContext('2d'); ctx.drawImage(src, 0, 0);
+  if (mode === 'none') return out;
+  const img = ctx.getImageData(0, 0, w, h), d = img.data;
+  // background estimate at low resolution: downscale, max-filter (removes text), box-blur
+  const sw = Math.max(8, Math.round(w / 24)), sh = Math.max(8, Math.round(h / 24));
+  const sc = document.createElement('canvas'); sc.width = sw; sc.height = sh;
+  const sctx = sc.getContext('2d'); sctx.drawImage(src, 0, 0, sw, sh);
+  const small = sctx.getImageData(0, 0, sw, sh), sd = small.data;
+  const pass = (fn, r) => { const copy = new Uint8ClampedArray(sd);
+    for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) for (let ch = 0; ch < 3; ch++) {
+      let acc = fn === 'max' ? 0 : 0, n = 0;
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        const xx = Math.min(sw-1, Math.max(0, x+dx)), yy = Math.min(sh-1, Math.max(0, y+dy)), v = copy[(yy*sw+xx)*4+ch];
+        if (fn === 'max') { if (v > acc) acc = v; } else { acc += v; n++; }
+      }
+      sd[(y*sw+x)*4+ch] = fn === 'max' ? acc : acc / n;
+    } };
+  pass('max', 2); pass('avg', 2);
+  sctx.putImageData(small, 0, 0);
+  const bgc = document.createElement('canvas'); bgc.width = w; bgc.height = h;
+  const bctx = bgc.getContext('2d'); bctx.imageSmoothingEnabled = true; bctx.imageSmoothingQuality = 'high';
+  bctx.drawImage(sc, 0, 0, w, h);
+  const bg = bctx.getImageData(0, 0, w, h).data;
+  for (let i = 0; i < d.length; i += 4) {
+    let r = Math.min(255, d[i]   * 255 / Math.max(bg[i],   1));
+    let g = Math.min(255, d[i+1] * 255 / Math.max(bg[i+1], 1));
+    let b = Math.min(255, d[i+2] * 255 / Math.max(bg[i+2], 1));
+    if (mode === 'bw') {
+      let v = 0.299*r + 0.587*g + 0.114*b;
+      v = (v - 70) * 255 / 160;                 // levels: deepen ink, whiten paper
+      v = v < 0 ? 0 : v > 255 ? 255 : v;
+      d[i] = d[i+1] = d[i+2] = v;
+    } else {
+      const lift = c => { c = (c - 25) * 255 / 220; return c < 0 ? 0 : c > 255 ? 255 : c; };
+      d[i] = lift(r); d[i+1] = lift(g); d[i+2] = lift(b);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return out;
+}
+
+function scanStep(n){
+  const crop = n === 1;
+  $('#scanEditor').classList.toggle('hidden', !crop);
+  $('#scanResult').classList.toggle('hidden', crop);
+  $('#scanFilters').classList.toggle('hidden', crop);
+  $('#scanBar1').classList.toggle('hidden', !crop);
+  $('#scanBar2').classList.toggle('hidden', crop);
+  $('#scanTitle').textContent = crop ? 'Adjust corners' : 'Scan result';
+}
+const scanBusy = on => { $('#scanSpin').classList.toggle('hidden', !on); document.querySelectorAll('#scan .sbar button').forEach(b => b.disabled = on); };
+
+async function openScanner(file){
+  $('#scanMsg').textContent = 'Finding the receipt…';
+  scanStep(1); scanBusy(true);
+  openLayer($('#scan'));
+  scan.src = await fileToCanvas(file);
+  scan.auto = null;
+  let lib = null;
+  try { lib = await loadScanic(); } catch { /* offline first time, or old phone: manual corners still work */ }
+  try {
+    if (lib) {
+      const r = await lib.scanDocument(scan.src, {mode:'detect', maxProcessingDimension:800});
+      if (r.success && r.corners) scan.auto = r.corners;
+    }
+  } catch {}
+  scanBusy(false);
+  $('#scanMsg').textContent = scan.auto ? 'Receipt found — drag the corners to fine-tune, then tap Scan.'
+                                        : "Couldn't find the edges automatically — drag the corners onto the receipt.";
+  mountEditor(lib, scan.auto || insetCorners(scan.src.width, scan.src.height));
+}
+function mountEditor(lib, corners){
+  scan.editor?.destroy?.(); scan.editor = null;
+  $('#scanEditor').innerHTML = '';
+  if (!lib) { $('#scanEditor').innerHTML = '<div class="empty" style="position:absolute;inset:0;display:grid;place-items:center">Scanner unavailable offline — use the original or try again online.</div>'; return; }
+  scan.editor = lib.createCornerEditor({
+    container: $('#scanEditor'), image: scan.src, corners,
+    toolbar: {enabled:false}, magnifier: {enabled:true},
+    theme: {accent:'#ff7a00', mask:'rgba(0,0,0,.55)', handleColor:'#ff7a00', handleRingColor:'#ffffff'},
+  });
+}
+async function renderScanResult(){
+  scanBusy(true); await new Promise(r => setTimeout(r, 20));
+  const outc = enhance(scan.warped, scan.filter);
+  scan.out = fitCanvas(outc, 1600);
+  $('#scanResult').src = scan.out.toDataURL('image/jpeg', 0.85);
+  document.querySelectorAll('#scanFilters .chip').forEach(c => c.classList.toggle('on', c.dataset.f === scan.filter));
+  scanBusy(false);
+}
+const closeScanner = () => closeLayer($('#scan'), () => { scan.editor?.destroy?.(); scan.editor = null; $('#scanEditor').innerHTML = ''; scan.src = scan.warped = scan.out = null; });
+$('#scanCancel').onclick = closeScanner;
+$('#scanOriginal').onclick = async () => {
+  if (!scan.src) return;
+  state.photo = await canvasToBlob(fitCanvas(scan.src, 1600), 0.8); setThumb(state.photo); closeScanner();
+};
+$('#scanReset').onclick = async () => {
+  const lib = await loadScanic().catch(() => null);
+  mountEditor(lib, scan.auto || insetCorners(scan.src.width, scan.src.height));
+  $('#scanMsg').textContent = scan.auto ? 'Back to the auto-detected corners.' : 'No edges detected — place the corners by hand.';
+};
+$('#scanGo').onclick = async () => {
+  if (!scan.editor) return;
+  scanBusy(true);
+  try {
+    const lib = await loadScanic();
+    const r = await lib.extractDocument(scan.src, scan.editor.getCorners(), {output:'canvas'});
+    if (!r.output) throw new Error(r.message || 'Could not straighten the photo');
+    scan.warped = r.output;
+    scanStep(2); $('#scanMsg').textContent = 'Pick a look, then tap Use scan.';
+    await renderScanResult();
+  } catch(err) { scanBusy(false); $('#scanMsg').textContent = 'Scan failed: ' + err.message; }
+};
+$('#scanFilters').addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b || !scan.warped) return; scan.filter = b.dataset.f; renderScanResult(); });
+$('#scanBack').onclick = () => { scanStep(1); $('#scanMsg').textContent = 'Drag the corners, then tap Scan.'; };
+$('#scanUse').onclick = async () => {
+  if (!scan.out) return;
+  state.photo = await canvasToBlob(scan.out, scan.filter === 'bw' ? 0.78 : 0.82); setThumb(state.photo);
+  toast('Scan attached'); closeScanner();
+};
 $('#photoRm').addEventListener('click', () => { state.photo = null; setThumb(null); });
 $('#thumb').addEventListener('click', () => showPhoto($('#thumb').src));
 
@@ -904,15 +1090,64 @@ async function deliverFile(name, blob){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
-const csvCell = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : String(v);
-$('#expCsv').onclick = async () => {
-  const rows = (await allEntries()).sort((a,b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
-  const accs = await accounts(), accName = id => (accs.find(a => a.id === (id || accs[0]?.id)) || {name:''}).name;
-  const lines = [['Date','Time','Category','Amount (JOD)','Paid from','Note','Has photo']];
-  rows.forEach(e => lines.push([e.date, new Date(e.createdAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),
-    (CAT[e.cat]||{name:e.cat}).name, (e.amount/100).toFixed(2), accName(e.account), e.note||'', e.hasPhoto?'yes':'no']));
-  const csv = '﻿' + lines.map(r => r.map(csvCell).join(',')).join('\r\n');
-  deliverFile(`spending-${today()}.csv`, new Blob([csv], {type:'text/csv'}));
+/* ---------- Excel export (SheetJS, loaded only when used) ---------- */
+let xlsxP = null;
+const loadXlsx = () => xlsxP ||= new Promise((res, rej) => {
+  if (window.XLSX) return res(window.XLSX);
+  const s = document.createElement('script'); s.src = 'lib/xlsx.mini.min.js';
+  s.onload = () => res(window.XLSX); s.onerror = () => { xlsxP = null; rej(new Error('Could not load the Excel library — check your connection')); };
+  document.head.appendChild(s);
+});
+function makeSheet(X, rows, widths, moneyCols = [], dateCols = []){
+  const ws = X.utils.aoa_to_sheet(rows);
+  const range = X.utils.decode_range(ws['!ref']);
+  for (let r = 1; r <= range.e.r; r++) {
+    moneyCols.forEach(c => { const cell = ws[X.utils.encode_cell({r, c})]; if (cell && cell.t === 'n') cell.z = '#,##0.00'; });
+    dateCols.forEach(c => { const cell = ws[X.utils.encode_cell({r, c})]; if (cell && cell.v) { cell.t = 'd'; cell.v = parseYmd(cell.v); cell.z = 'yyyy-mm-dd'; } });
+  }
+  ws['!cols'] = widths.map(wch => ({wch}));
+  if (rows.length > 1) ws['!autofilter'] = {ref: X.utils.encode_range({s:{r:0,c:0}, e:{r:range.e.r, c:range.e.c}})};
+  return ws;
+}
+$('#expXlsx').onclick = async () => {
+  let X;
+  try { toast('Preparing Excel file…'); X = await loadXlsx(); } catch(err) { return alert(err.message); }
+  const [ents, accs, trs, cks] = await Promise.all([allEntries(), accounts(), allOf('transfers'), allOf('checkins')]);
+  const accName = id => (accs.find(a => a.id === (id || accs[0]?.id)) || {name:'Deleted account'}).name;
+  const catName = id => (CAT[id] || {name:id}).name;
+  const hhmm = t => new Date(t).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  ents.sort((a,b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
+
+  const exp = [['Date','Time','Category','Amount (JOD)','Paid from','Note','Bill photo']];
+  ents.forEach(e => exp.push([e.date, hhmm(e.createdAt), catName(e.cat), e.amount/100, accName(e.account), e.note || '', e.hasPhoto ? 'Yes' : 'No']));
+
+  const months = [...new Set(ents.map(e => e.date.slice(0,7)))].sort();
+  const usedCats = CATS.filter(c => ents.some(e => e.cat === c.id));
+  const sum = [['Month', ...usedCats.map(c => c.name), 'Total']];
+  months.forEach(m => {
+    const inM = ents.filter(e => e.date.startsWith(m));
+    const row = usedCats.map(c => inM.filter(e => e.cat === c.id).reduce((s,e) => s + e.amount, 0) / 100);
+    sum.push([parseYmd(m + '-01').toLocaleDateString('en-GB',{month:'long', year:'numeric'}), ...row, inM.reduce((s,e) => s + e.amount, 0) / 100]);
+  });
+  if (months.length) sum.push(['All time', ...usedCats.map(c => ents.filter(e => e.cat === c.id).reduce((s,e) => s + e.amount, 0) / 100), ents.reduce((s,e) => s + e.amount, 0) / 100]);
+
+  const tr = [['Date','From','To','Amount (JOD)','Note']];
+  trs.sort((a,b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt)
+     .forEach(t => tr.push([t.date, accName(t.from), accName(t.to), t.amount/100, t.note || '']));
+
+  const bal = [['Date','Account','Bank balance (JOD)','App expected (JOD)','Difference (JOD)','Type']];
+  cks.sort((a,b) => a.at - b.at).forEach(c => bal.push([c.date, accName(c.account), c.amount/100,
+    c.expectedBefore == null ? '' : c.expectedBefore/100,
+    c.expectedBefore == null || c.income ? '' : (c.amount - c.expectedBefore)/100,
+    c.income ? 'New income' : c.expectedBefore == null ? 'Starting balance' : 'Check']));
+
+  const wb = X.utils.book_new();
+  X.utils.book_append_sheet(wb, makeSheet(X, exp, [12,7,16,13,18,30,10], [3], [0]), 'Expenses');
+  X.utils.book_append_sheet(wb, makeSheet(X, sum, [16, ...usedCats.map(() => 14), 12], sum[0].map((_, i) => i).slice(1)), 'Monthly summary');
+  X.utils.book_append_sheet(wb, makeSheet(X, tr, [12,18,18,13,30], [3], [0]), 'Transfers');
+  X.utils.book_append_sheet(wb, makeSheet(X, bal, [12,18,18,18,16,16], [2,3,4], [0]), 'Balance updates');
+  const buf = X.write(wb, {bookType:'xlsx', type:'array', cellDates:true});
+  deliverFile(`spending-${today()}.xlsx`, new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
 };
 const blobToDataUrl = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
 $('#expJson').onclick = async () => {

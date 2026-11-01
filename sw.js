@@ -1,6 +1,7 @@
 // Network-first for the app shell so updates arrive; falls back to cache offline.
-const CACHE = 'spending-v11';
-const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-v3-180.png', './icon-v3-192.png', './icon-v3-512.png'];
+const CACHE = 'spending-v12';
+const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-v3-180.png', './icon-v3-192.png', './icon-v3-512.png',
+  './lib/scanic/scanic.js', './lib/xlsx.mini.min.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
