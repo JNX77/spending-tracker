@@ -108,6 +108,14 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
 .photo .add{background:var(--surface);border-radius:14px;padding:12px 14px;box-shadow:var(--shadow);font-weight:600}
 .thumb{width:64px;height:64px;border-radius:12px;object-fit:cover;background:var(--surface-2)}
 .err{color:var(--danger);font-size:14px;min-height:20px;margin-top:6px}
+.req{color:var(--accent);margin-left:2px}
+.label.missing{color:var(--danger)}
+.amtwrap.missing,.cats.missing .chip,.acc-chips.missing .chip{box-shadow:0 0 0 1.5px var(--danger)}
+@keyframes shake{0%,100%{transform:none}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+.shake{animation:shake .35s ease}
+.primary.off{opacity:.45}
+.entry .edit{color:var(--muted);font-size:14px;margin-left:8px}
+.hint{color:var(--muted);font-size:13px;text-align:center;padding:8px 0 2px}
 .actions{display:flex;gap:10px;margin-top:10px}
 .primary{flex:1;background:var(--accent);color:var(--accent-ink);border-radius:16px;padding:16px;font-weight:700;font-size:17px}
 .danger{background:var(--surface);color:var(--danger);border-radius:16px;padding:16px 18px;font-weight:700;box-shadow:var(--shadow)}
@@ -263,10 +271,11 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
   <form class="sheet" id="form" autocomplete="off" novalidate>
     <div class="grab"></div>
     <div class="sheethead"><h2 id="sheetTitle">New expense</h2><button type="button" class="pill" id="cancel">Cancel</button></div>
-    <div class="amtwrap"><span>JD</span><input id="amount" inputmode="decimal" placeholder="0.00" aria-label="Amount in Jordanian dinars"></div>
-    <div class="label">Category</div>
+    <div class="label" id="lblAmount">Amount<span class="req">*</span></div>
+    <div class="amtwrap" id="amtWrap"><span>JD</span><input id="amount" inputmode="decimal" placeholder="0.00" aria-label="Amount in Jordanian dinars"></div>
+    <div class="label" id="lblCat">Category<span class="req">*</span></div>
     <div class="cats" id="cats"></div>
-    <div id="accWrap"><div class="label">Paid from</div><div class="acc-chips" id="accChips"></div></div>
+    <div id="accWrap"><div class="label" id="lblAcc">Paid from<span class="req">*</span></div><div class="acc-chips" id="accChips"></div></div>
     <div class="label">Date</div>
     <input type="date" class="field" id="date">
     <div class="label">Note (optional)</div>
@@ -281,7 +290,7 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
     <div class="err" id="err"></div>
     <div class="actions">
       <button type="button" class="danger hidden" id="del">Delete</button>
-      <button type="submit" class="primary" id="save">Save</button>
+      <button type="submit" class="primary off" id="save">Save</button>
     </div>
   </form>
 </div>
@@ -451,7 +460,7 @@ function entryRow(e){
     <span class="dot" style="background:${c.c}22">${c.e}</span>
     <span class="mid"><div class="cat">${esc(c.name)}${e.hasPhoto?' 🧾':''}</div>
       <div class="note">${esc(e.note || time)}</div></span>
-    <span class="amt num">${money(e.amount)}</span></button>`;
+    <span class="amt num">${money(e.amount)}</span><span class="edit">✎</span></button>`;
 }
 
 async function renderDay(){
@@ -465,7 +474,7 @@ async function renderDay(){
   const m = d.slice(0,7);
   const monthItems = await entriesBetween(m + '-01', m + '-31');
   $('#dayMeta').textContent = `${items.length} ${items.length===1?'entry':'entries'} · ${parseYmd(d).toLocaleDateString('en-GB',{month:'long'})} so far: ${jd(monthItems.filter(e=>e.date<=d).reduce((s,e)=>s+e.amount,0))}`;
-  $('#dayList').innerHTML = items.length ? items.map(entryRow).join('') : `<div class="empty">Nothing logged ${d===today()?'yet today':'this day'}.<br>Tap <b>+</b> to add an expense.</div>`;
+  $('#dayList').innerHTML = items.length ? items.map(entryRow).join('') + '<div class="hint">Tap an expense to edit or delete it</div>' : `<div class="empty">Nothing logged ${d===today()?'yet today':'this day'}.<br>Tap <b>+</b> to add an expense.</div>`;
 }
 
 async function renderMonth(){
@@ -568,21 +577,33 @@ function setThumb(blob){
 function pickCat(id){
   state.cat = id;
   document.querySelectorAll('#cats .chip').forEach(c => c.classList.toggle('on', c.dataset.cat === id));
+  if (id) { $('#lblCat').classList.remove('missing'); $('#cats').classList.remove('missing'); }
+  updateSaveState();
 }
 function pickAcc(id){
   state.acc = id;
   document.querySelectorAll('#accChips .chip').forEach(c => c.classList.toggle('on', c.dataset.acc === id));
+  if (id) { $('#lblAcc').classList.remove('missing'); $('#accChips').classList.remove('missing'); }
+  updateSaveState();
 }
+function formIssues(){
+  const miss = [];
+  if (parseAmount($('#amount').value) == null) miss.push('amount');
+  if (!state.cat) miss.push('cat');
+  if (!state.acc) miss.push('acc');
+  return miss;
+}
+function updateSaveState(){ $('#save').classList.toggle('off', formIssues().length > 0); }
+function clearMissing(){ ['#lblAmount','#lblCat','#lblAcc','#amtWrap','#cats','#accChips'].forEach(q => $(q)?.classList.remove('missing')); }
 async function renderAccChips(selected){
   const accs = await accounts();
-  $('#accWrap').classList.toggle('hidden', !accs.length);
-  $('#accChips').innerHTML = accs.map(a => `<button type="button" class="chip" data-acc="${a.id}">${esc(a.name)}</button>`).join('');
-  let last = null; try { last = localStorage.getItem('lastAcc'); } catch {}
-  const pick = [selected, last, accs[0]?.id].find(id => id && accs.some(a => a.id === id)) || null;
-  pickAcc(pick);
+  $('#accChips').innerHTML = accs.length ? accs.map(a => `<button type="button" class="chip" data-acc="${a.id}">${esc(a.name)}</button>`).join('')
+    : '<span class="meta">No accounts yet — add one in the Accounts tab.</span>';
+  pickAcc(selected && accs.some(a => a.id === selected) ? selected : null);
 }
 async function openSheet(entry){
   state.editing = entry || null; state.photo = undefined;
+  clearMissing();
   $('#sheetTitle').textContent = entry ? 'Edit expense' : 'New expense';
   $('#amount').value = entry ? (entry.amount/100).toFixed(2) : '';
   $('#note').value = entry?.note || '';
@@ -591,15 +612,23 @@ async function openSheet(entry){
   $('#err').textContent = '';
   $('#del').classList.toggle('hidden', !entry);
   pickCat(entry?.cat || null);
+  state.acc = entry?.account || null;
+  if (!entry) {
+    /* New expense: show the sheet and focus the amount right now, while still inside the tap,
+       so iOS opens the number keyboard immediately. */
+    openLayer($('#sheetWrap'));
+    $('#amount').focus({preventScroll:true});
+  }
   await renderAccChips(entry?.account);
   setThumb(entry?.hasPhoto ? await getPhoto(entry.id) : null);
-  openLayer($('#sheetWrap'));
-  if (!entry) setTimeout(() => $('#amount').focus(), 50);
+  if (entry) openLayer($('#sheetWrap'));
+  updateSaveState();
 }
 function closeSheet(){ $('#amount').blur(); closeLayer($('#sheetWrap'), () => setThumb(null)); }
 
 $('#cats').innerHTML = CATS.map(c => `<button type="button" class="chip" data-cat="${c.id}"><span class="e">${c.e}</span>${esc(c.name)}</button>`).join('');
 $('#cats').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) pickCat(b.dataset.cat); });
+$('#amount').addEventListener('input', () => { if (parseAmount($('#amount').value) != null) { $('#lblAmount').classList.remove('missing'); $('#amtWrap').classList.remove('missing'); $('#err').textContent = ''; } updateSaveState(); });
 $('#accChips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) pickAcc(b.dataset.acc); });
 
 $('#photoIn').addEventListener('change', async e => {
@@ -614,8 +643,19 @@ $('#thumb').addEventListener('click', () => showPhoto($('#thumb').src));
 $('#form').addEventListener('submit', async e => {
   e.preventDefault();
   const amount = parseAmount($('#amount').value);
-  if (amount == null) return $('#err').textContent = 'Enter an amount like 3.50 (up to 2 decimals).';
-  if (!state.cat) return $('#err').textContent = 'Pick a category.';
+  const miss = formIssues();
+  if (miss.length) {
+    clearMissing();
+    const map = {amount:['#lblAmount','#amtWrap'], cat:['#lblCat','#cats'], acc:['#lblAcc','#accChips']};
+    miss.forEach(k => map[k].forEach(q => $(q).classList.add('missing')));
+    const names = {amount: $('#amount').value.trim() ? 'a valid amount (e.g. 3.50, max 2 decimals)' : 'the amount', cat:'a category', acc:'which account paid'};
+    const noAccounts = miss.includes('acc') && !document.querySelector('#accChips .chip');
+    $('#err').textContent = noAccounts ? 'Add an account in the Accounts tab first.' : 'Still needed: ' + miss.map(k => names[k]).join(', ') + '.';
+    replay($('#form'), 'shake');
+    const first = map[miss[0]][1]; $(first).scrollIntoView({behavior:'smooth', block:'center'});
+    if (miss[0] === 'amount') $('#amount').focus({preventScroll:true});
+    return;
+  }
   const date = $('#date').value || today();
   const prev = state.editing;
   const hasPhoto = state.photo === undefined ? !!prev?.hasPhoto : !!state.photo;
