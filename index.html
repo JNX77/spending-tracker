@@ -147,7 +147,7 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
 .slide-r{animation:slideR .26s cubic-bezier(.2,.85,.25,1)}
 .fill{animation:grow .7s cubic-bezier(.2,.85,.25,1)}
 .entry{border-radius:12px}
-.entry.flash{animation:flash 1s ease-out}
+.entry.flash,.tr-row.flash{animation:flash 1s ease-out}
 .entry.out{transition:opacity .22s ease,transform .22s ease;opacity:0;transform:translateX(-30px)}
 .card.glow{animation:glow 1.2s ease-out}
 .chip,.pill,.iconbtn,.primary,.danger,.ghost,.fab,.tab,.photo .add{transition:transform .12s ease,background-color .15s ease,border-color .15s ease}
@@ -182,6 +182,13 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
 .linkbtn{color:var(--muted);font-size:14px;font-weight:600}
 .ghost{background:var(--surface);box-shadow:var(--shadow);border-radius:16px;padding:14px;font-weight:700;color:var(--accent);width:100%}
 .check{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:15px}
+.tr-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:12px 2px;border-bottom:1px solid var(--line)}
+.tr-row:last-child{border-bottom:0}
+.tr-row .mid{flex:1;min-width:0}
+.tr-row .mid b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr-arrow{width:36px;height:36px;border-radius:10px;background:#ff7a0022;color:var(--accent);display:grid;place-items:center;font-size:18px;flex:none}
+.btnrow{display:flex;gap:10px}
+.btnrow .ghost{flex:1}
 .check input{width:22px;height:22px;accent-color:var(--accent)}
 </style>
 </head>
@@ -235,8 +242,9 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
     <div class="meta" id="accTotalMeta"></div>
   </div>
   <div id="accList"></div>
-  <button class="ghost" id="accAdd">+ Add account</button>
-  <div class="meta" style="text-align:center;margin:14px 8px 0">Enter what your bank app shows at the start of the month or when your salary lands. Expenses you log are subtracted from the account they were paid from, so you can see if the numbers match.</div>
+  <div class="btnrow"><button class="ghost" id="trNew">⇄ Transfer</button><button class="ghost" id="accAdd">+ Add account</button></div>
+  <div class="card" id="trCard" style="margin-top:12px"><div class="meta">Recent transfers</div><div id="trList"></div></div>
+  <div class="meta" style="text-align:center;margin:14px 8px 0">Enter what your bank app shows at the start of the month or when your salary lands. Expenses you log are subtracted from the account they were paid from, and transfers move money between accounts, so you can see if the numbers match your bank.</div>
 </section>
 
 <!-- SETTINGS VIEW -->
@@ -291,6 +299,29 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
     <div class="actions">
       <button type="button" class="danger hidden" id="del">Delete</button>
       <button type="submit" class="primary off" id="save">Save</button>
+    </div>
+  </form>
+</div>
+
+<!-- TRANSFER SHEET -->
+<div class="backdrop hidden" id="trWrap">
+  <form class="sheet" id="trForm" autocomplete="off" novalidate>
+    <div class="grab"></div>
+    <div class="sheethead"><h2 id="trTitle">Transfer</h2><button type="button" class="pill" id="trCancel">Cancel</button></div>
+    <div class="label" id="lblTrAmt">Amount<span class="req">*</span></div>
+    <div class="amtwrap" id="trAmtWrap"><span>JD</span><input id="trAmount" inputmode="decimal" placeholder="0.00" aria-label="Transfer amount in Jordanian dinars"></div>
+    <div class="label" id="lblTrFrom">From<span class="req">*</span></div>
+    <div class="acc-chips" id="trFrom"></div>
+    <div class="label" id="lblTrTo">To<span class="req">*</span></div>
+    <div class="acc-chips" id="trTo"></div>
+    <div class="label">Date</div>
+    <input type="date" class="field" id="trDate">
+    <div class="label">Note (optional)</div>
+    <input class="field" id="trNote" placeholder="e.g. Monthly savings" maxlength="140">
+    <div class="err" id="trErr"></div>
+    <div class="actions">
+      <button type="button" class="danger hidden" id="trDel">Delete</button>
+      <button type="submit" class="primary off" id="trSave">Save transfer</button>
     </div>
   </form>
 </div>
@@ -388,7 +419,7 @@ function countTo(el, minor){
 let dbP;
 function db(){
   return dbP ||= new Promise((res, rej) => {
-    const r = indexedDB.open('spending', 2);
+    const r = indexedDB.open('spending', 3);
     r.onupgradeneeded = ev => {
       const d = r.result, old = ev.oldVersion;
       if (old < 1) {
@@ -401,6 +432,7 @@ function db(){
         a.put({id:'salary', name:'Salary account', order:0});
         a.put({id:'savings', name:'Savings account', order:1});
       }
+      if (old < 3) d.createObjectStore('transfers', {keyPath:'id'});
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -508,14 +540,17 @@ async function renderMonth(){
 /* Expected balance = last bank balance − expenses paid from that account logged after it */
 const afterCheckin = (e, c) => e.date > c.date || (e.date === c.date && e.createdAt > c.at);
 async function accountStatus(){
-  const [accs, cks, ents] = await Promise.all([accounts(), allOf('checkins'), allEntries()]);
+  const [accs, cks, ents, trs] = await Promise.all([accounts(), allOf('checkins'), allEntries(), allOf('transfers')]);
   const def = accs[0]?.id;
   return accs.map(a => {
     const mine = cks.filter(c => c.account === a.id).sort((x,y) => x.at - y.at);
     const last = mine[mine.length - 1];
     if (!last) return {a, last:null, hist:[]};
     const spent = ents.filter(e => (e.account || def) === a.id && afterCheckin(e, last)).reduce((s,e) => s + e.amount, 0);
-    return {a, last, spent, expected: last.amount - spent, hist: mine.slice(-5).reverse()};
+    const recent = trs.filter(t => afterCheckin(t, last));
+    const tin  = recent.filter(t => t.to === a.id).reduce((s,t) => s + t.amount, 0);
+    const tout = recent.filter(t => t.from === a.id).reduce((s,t) => s + t.amount, 0);
+    return {a, last, spent, tin, tout, expected: last.amount - spent + tin - tout, hist: mine.slice(-5).reverse()};
   });
 }
 async function renderAccounts(){
@@ -524,7 +559,7 @@ async function renderAccounts(){
   const total = withBal.reduce((s,x) => s + x.expected, 0);
   countTo($('#accTotal'), total);
   $('#accTotalMeta').textContent = withBal.length ? `Tracked spending since last updates: ${jd(withBal.reduce((s,x)=>s+x.spent,0))}` : 'Add a balance to an account to start.';
-  $('#accList').innerHTML = st.map(({a, last, spent, expected, hist}) => {
+  $('#accList').innerHTML = st.map(({a, last, spent, tin, tout, expected, hist}) => {
     const name = `<div class="head"><h3>🏦 ${esc(a.name)}</h3><button class="pill" data-bal="${a.id}">Update balance</button></div>`;
     const links = `<div class="linkrow"><button class="linkbtn" data-ren="${a.id}">Rename</button><button class="linkbtn" data-delacc="${a.id}">Delete</button></div>`;
     if (!last) return `<div class="card acct">${name}<div class="meta" style="margin-top:8px">No balance yet — tap <b>Update balance</b> and enter what your bank app shows.</div>${links}</div>`;
@@ -542,9 +577,20 @@ async function renderAccounts(){
       <div class="meta" style="margin-top:10px">Should have now</div>
       <div class="exp num ${expected < 0 ? 'neg' : ''}"><small>JD</small>${money(expected)}</div>
       <div class="track"><div class="fill" style="width:${pct}%"></div></div>
-      <div class="meta">Last bank balance ${jd(last.amount)} (${esc(dayLabel(last.date))}) · logged since: ${jd(spent)}</div>
+      <div class="meta">Last bank balance ${jd(last.amount)} (${esc(dayLabel(last.date))}) · spent since: ${jd(spent)}${tin ? ` · transfers in: +${money(tin)}` : ''}${tout ? ` · transfers out: −${money(tout)}` : ''}</div>
       <div style="margin-top:10px">${rows}</div>${links}</div>`;
   }).join('');
+  await renderTransfers();
+}
+async function renderTransfers(){
+  const [trs, accs] = await Promise.all([allOf('transfers'), accounts()]);
+  const nm = id => esc(accs.find(a => a.id === id)?.name || 'Deleted account');
+  const list = trs.sort((a,b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt).slice(0, 15);
+  $('#trList').innerHTML = list.length ? list.map(t => `<button class="tr-row${t.id === state.flash ? ' flash' : ''}" data-tr="${t.id}">
+      <span class="tr-arrow">⇄</span>
+      <span class="mid"><b>${nm(t.from)} → ${nm(t.to)}</b><span class="meta">${esc(dayLabel(t.date))}${t.note ? ' · ' + esc(t.note) : ''}</span></span>
+      <span class="amt num" style="font-weight:700">${money(t.amount)}</span><span class="edit" style="color:var(--muted);font-size:14px">✎</span></button>`).join('')
+    : '<div class="empty" style="padding:16px 8px">No transfers yet. Tap <b>⇄ Transfer</b> when you move money between accounts.</div>';
 }
 
 async function renderSettings(){
@@ -686,6 +732,76 @@ $('#del').addEventListener('click', async () => {
 $('#cancel').addEventListener('click', closeSheet);
 $('#sheetWrap').addEventListener('click', e => { if (e.target.id === 'sheetWrap') closeSheet(); });
 
+/* ---------- transfers ---------- */
+const tr = {editing:null, from:null, to:null};
+function trIssues(){
+  const m = [];
+  if (parseAmount($('#trAmount').value) == null) m.push('amt');
+  if (!tr.from) m.push('from');
+  if (!tr.to) m.push('to');
+  if (tr.from && tr.to && tr.from === tr.to) m.push('same');
+  return m;
+}
+const trUpdate = () => $('#trSave').classList.toggle('off', trIssues().length > 0);
+function trPick(side, id){
+  tr[side] = id;
+  document.querySelectorAll(side === 'from' ? '#trFrom .chip' : '#trTo .chip').forEach(c => c.classList.toggle('on', c.dataset.acc === id));
+  ['#lblTrFrom','#trFrom','#lblTrTo','#trTo'].forEach(q => $(q).classList.remove('missing'));
+  $('#trErr').textContent = ''; trUpdate();
+}
+async function openTransfer(t){
+  tr.editing = t || null;
+  $('#trTitle').textContent = t ? 'Edit transfer' : 'Transfer';
+  $('#trAmount').value = t ? (t.amount/100).toFixed(2) : '';
+  $('#trNote').value = t?.note || '';
+  $('#trDate').value = t?.date || today(); $('#trDate').max = today();
+  $('#trErr').textContent = '';
+  $('#trDel').classList.toggle('hidden', !t);
+  ['#lblTrAmt','#trAmtWrap','#lblTrFrom','#trFrom','#lblTrTo','#trTo'].forEach(q => $(q).classList.remove('missing'));
+  if (!t) { openLayer($('#trWrap')); $('#trAmount').focus({preventScroll:true}); }
+  const accs = await accounts();
+  const chips = accs.map(a => `<button type="button" class="chip" data-acc="${a.id}">${esc(a.name)}</button>`).join('') || '<span class="meta">Add accounts first.</span>';
+  $('#trFrom').innerHTML = chips; $('#trTo').innerHTML = chips;
+  trPick('from', t?.from || null); trPick('to', t?.to || null);
+  if (t) openLayer($('#trWrap'));
+}
+const closeTransfer = () => { $('#trAmount').blur(); closeLayer($('#trWrap')); };
+$('#trNew').addEventListener('click', () => openTransfer());
+$('#trCancel').addEventListener('click', closeTransfer);
+$('#trWrap').addEventListener('click', e => { if (e.target.id === 'trWrap') closeTransfer(); });
+$('#trFrom').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) trPick('from', b.dataset.acc); });
+$('#trTo').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) trPick('to', b.dataset.acc); });
+$('#trAmount').addEventListener('input', () => { if (parseAmount($('#trAmount').value) != null) ['#lblTrAmt','#trAmtWrap'].forEach(q => $(q).classList.remove('missing')); trUpdate(); });
+$('#trList').addEventListener('click', async e => {
+  const b = e.target.closest('[data-tr]'); if (!b) return;
+  openTransfer((await allOf('transfers')).find(t => t.id === b.dataset.tr));
+});
+$('#trForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const miss = trIssues();
+  if (miss.length) {
+    const map = {amt:['#lblTrAmt','#trAmtWrap'], from:['#lblTrFrom','#trFrom'], to:['#lblTrTo','#trTo'], same:['#lblTrTo','#trTo']};
+    miss.forEach(k => map[k].forEach(q => $(q).classList.add('missing')));
+    const names = {amt: $('#trAmount').value.trim() ? 'a valid amount (max 2 decimals)' : 'the amount', from:'which account it came from', to:'which account it went to'};
+    $('#trErr').textContent = miss.includes('same') ? 'From and To must be different accounts.' : 'Still needed: ' + miss.map(k => names[k]).join(', ') + '.';
+    replay($('#trForm'), 'shake');
+    return;
+  }
+  const prev = tr.editing;
+  const t = {id: prev?.id || uid(), amount: parseAmount($('#trAmount').value), from: tr.from, to: tr.to,
+             date: $('#trDate').value || today(), note: $('#trNote').value.trim(),
+             createdAt: prev?.createdAt || Date.now(), updatedAt: Date.now()};
+  await putIn('transfers', t);
+  closeTransfer();
+  state.flash = t.id; setTimeout(() => state.flash = null, 1200);
+  toast(prev ? 'Transfer updated' : `Moved ${jd(t.amount)}`);
+  render();
+});
+$('#trDel').addEventListener('click', async () => {
+  if (!tr.editing || !confirm('Delete this transfer?')) return;
+  await delFrom('transfers', tr.editing.id); closeTransfer(); toast('Transfer deleted'); render();
+});
+
 /* ---------- accounts actions ---------- */
 async function openBal(id){
   const st = (await accountStatus()).find(x => x.a.id === id); if (!st) return;
@@ -804,7 +920,7 @@ $('#expJson').onclick = async () => {
   const entries = await allEntries(), photos = {};
   for (const e of entries) if (e.hasPhoto) { const p = await getPhoto(e.id); if (p) photos[e.id] = await blobToDataUrl(p); }
   const data = {app:'spending-tracker', version:2, exportedAt:new Date().toISOString(), entries, photos,
-                accounts: await allOf('accounts'), checkins: await allOf('checkins')};
+                accounts: await allOf('accounts'), checkins: await allOf('checkins'), transfers: await allOf('transfers')};
   deliverFile(`spending-backup-${today()}.json`, new Blob([JSON.stringify(data)], {type:'application/json'}));
 };
 $('#impJson').onclick = () => $('#impFile').click();
@@ -823,6 +939,7 @@ $('#impFile').addEventListener('change', async e => {
     }
     for (const a of data.accounts || []) if (a.id && a.name) await putIn('accounts', a);
     for (const c of data.checkins || []) if (c.id && c.account && Number.isInteger(c.amount)) await putIn('checkins', c);
+    for (const t of data.transfers || []) if (t.id && t.from && t.to && Number.isInteger(t.amount)) await putIn('transfers', t);
     toast(`Restored ${n} entries`); render();
   } catch(err) { alert('Restore failed: ' + err.message); }
 });
