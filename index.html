@@ -388,7 +388,7 @@ const CATS = [
   {id:'groceries',     name:'Groceries',      e:'🛒', c:'#22c55e'},
   {id:'transport',     name:'Transportation', e:'🚕', c:'#3b82f6'},
   {id:'entertainment', name:'Entertainment',  e:'🎬', c:'#a855f7'},
-  {id:'missus',        name:'The Missus',     e:'💝', c:'#ec4899'},
+  {id:'missus',        name:'جلالتي',          e:'💝', c:'#ec4899'},
   {id:'rent',          name:'Rent',           e:'🏠', c:'#ef4444'},
   {id:'utilities',     name:'Utilities',      e:'💡', c:'#06b6d4'},
   {id:'data',          name:'Data',           e:'📶', c:'#84cc16'},
@@ -1236,7 +1236,7 @@ $('#installHint').classList.toggle('hidden', isStandalone());
 try { navigator.storage?.persist?.(); } catch {}
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then(r => r.update?.()).catch(() => {});
 /* ---------- auto-update: iPhone often resumes the app without reloading, so check for a newer version on every resume ---------- */
-const APP_VERSION = '2026.11.01-4';
+const APP_VERSION = '2026.11.02-1';
 $('#verLbl').textContent = 'Version ' + APP_VERSION;
 const anyOverlayOpen = () => document.querySelector('.backdrop.open, .scan.open, .viewer.open');
 async function checkForUpdate(){
