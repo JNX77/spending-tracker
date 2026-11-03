@@ -207,6 +207,14 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
 .tr-row .mid b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tr-arrow{width:36px;height:36px;border-radius:10px;background:#ff7a0022;color:var(--accent);display:grid;place-items:center;font-size:18px;flex:none}
 .btnrow{display:flex;gap:10px}
+.auto .head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.auto h3{margin:0;font-size:17px}
+.auto .big{font-size:22px;font-weight:700;margin:8px 0 2px}
+.auto .next{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.auto .next.skipped b{text-decoration:line-through;color:var(--muted)}
+.tag{display:inline-block;font-size:11px;font-weight:700;color:var(--accent);background:#ff7a0022;border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:1px}
+.daygrid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.daygrid .chip{padding:8px 0;font-size:14px}
 .btnrow .ghost{flex:1}
 .check input{width:22px;height:22px;accent-color:var(--accent)}
 </style>
@@ -262,6 +270,7 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
   </div>
   <div id="accList"></div>
   <div class="btnrow"><button class="ghost" id="trNew">⇄ Transfer</button><button class="ghost" id="accAdd">+ Add account</button></div>
+  <div id="autoCard" style="margin-top:12px"></div>
   <div class="card" id="trCard" style="margin-top:12px"><div class="meta">Recent transfers</div><div id="trList"></div></div>
   <div class="meta" style="text-align:center;margin:14px 8px 0">Enter what your bank app shows at the start of the month or when your salary lands. Expenses you log are subtracted from the account they were paid from, and transfers move money between accounts, so you can see if the numbers match your bank.</div>
 </section>
@@ -323,6 +332,22 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
       <button type="button" class="danger hidden" id="del">Delete</button>
       <button type="submit" class="primary off" id="save">Save</button>
     </div>
+  </form>
+</div>
+
+<!-- AUTOMATIC TRANSFER SHEET -->
+<div class="backdrop hidden" id="ruleWrap">
+  <form class="sheet" id="ruleForm" autocomplete="off" novalidate>
+    <div class="grab"></div>
+    <div class="sheethead"><h2>Monthly automatic transfer</h2><button type="button" class="pill" id="ruleCancel">Cancel</button></div>
+    <div class="label">Amount<span class="req">*</span></div>
+    <div class="amtwrap"><span>JD</span><input id="ruleAmount" inputmode="decimal" placeholder="0.00" aria-label="Monthly transfer amount"></div>
+    <div class="label">From<span class="req">*</span></div><div class="acc-chips" id="ruleFrom"></div>
+    <div class="label">To<span class="req">*</span></div><div class="acc-chips" id="ruleTo"></div>
+    <div class="label">Day of the month</div><div class="daygrid" id="ruleDay"></div>
+    <label class="check"><input type="checkbox" id="ruleOn"> Automation on</label>
+    <div class="err" id="ruleErr"></div>
+    <div class="actions"><button type="submit" class="primary">Save</button></div>
   </form>
 </div>
 
@@ -469,7 +494,7 @@ function countTo(el, minor){
 let dbP;
 function db(){
   return dbP ||= new Promise((res, rej) => {
-    const r = indexedDB.open('spending', 3);
+    const r = indexedDB.open('spending', 4);
     r.onupgradeneeded = ev => {
       const d = r.result, old = ev.oldVersion;
       if (old < 1) {
@@ -483,6 +508,7 @@ function db(){
         a.put({id:'savings', name:'Savings account', order:1});
       }
       if (old < 3) d.createObjectStore('transfers', {keyPath:'id'});
+      if (old < 4) d.createObjectStore('rules', {keyPath:'id'});
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -613,7 +639,7 @@ async function renderAccounts(){
     const name = `<div class="head"><h3>🏦 ${esc(a.name)}</h3><button class="pill" data-bal="${a.id}">Update balance</button></div>`;
     const links = `<div class="linkrow"><button class="linkbtn" data-ren="${a.id}">Rename</button><button class="linkbtn" data-delacc="${a.id}">Delete</button></div>`;
     if (!last) return `<div class="card acct">${name}<div class="meta" style="margin-top:8px">No balance yet — tap <b>Update balance</b> and enter what your bank app shows.</div>${links}</div>`;
-    const pct = last.amount > 0 ? Math.max(0, Math.min(100, expected / last.amount * 100)) : 0;
+    const pct = last.amount > 0 ? Math.max(0, Math.min(100, expected / last.amount * 100)) : (expected > 0 ? 100 : 0);
     const rows = hist.map(c => {
       let tag = '<span class="meta">Starting balance</span>';
       if (c.income) tag = '<span class="meta">💰 New income</span>';
@@ -630,15 +656,70 @@ async function renderAccounts(){
       <div class="meta">Last bank balance ${jd(last.amount)} (${esc(dayLabel(last.date))}) · spent since: ${jd(spent)}${tin ? ` · transfers in: +${money(tin)}` : ''}${tout ? ` · transfers out: −${money(tout)}` : ''}</div>
       <div style="margin-top:10px">${rows}</div>${links}</div>`;
   }).join('');
+  await renderAuto();
   await renderTransfers();
 }
+/* ---------- monthly automatic transfer (mirrors the bank's standing order) ----------
+   rule: {id, from, to, amount, day, on, start:'YYYY-MM' first month it applies, skips:[months], done:[months]} */
+const monthKey = d => ymd(d).slice(0,7);
+const addMonths = (m, n) => { const [y,mo] = m.split('-').map(Number); return monthKey(new Date(y, mo-1+n, 1)); };
+const ruleDate = (m, day) => { const [y,mo] = m.split('-').map(Number); const last = new Date(y, mo, 0).getDate(); return `${m}-${pad(Math.min(day, last))}`; };
+/* create any transfers that are due (runs on open and every time the app comes back) */
+async function runAutomations(){
+  const rules = await allOf('rules'); let made = 0;
+  for (const r of rules) {
+    if (!r.on) continue;
+    let changed = false;
+    for (let m = r.start; ruleDate(m, r.day) <= today(); m = addMonths(m, 1)) {
+      if (r.done.includes(m) || r.skips.includes(m)) continue;
+      const date = ruleDate(m, r.day);
+      await putIn('transfers', {id:`auto-${r.id}-${m}`, auto:true, rule:r.id, amount:r.amount, from:r.from, to:r.to, date,
+                                note:'Automatic monthly transfer', createdAt: parseYmd(date).getTime(), updatedAt: Date.now()});
+      r.done.push(m); changed = true; made++;
+    }
+    if (changed) await putIn('rules', r);
+  }
+  if (made) toast(made === 1 ? 'Automatic transfer added' : `${made} automatic transfers added`);
+  return made;
+}
+/* first launch with this feature: set up the 1,000 JD salary → savings transfer on the 5th */
+async function seedRule(){
+  try { if (localStorage.getItem('ruleSeeded')) return; } catch {}
+  const [rules, accs] = await Promise.all([allOf('rules'), accounts()]);
+  if (!rules.length && accs.some(a => a.id === 'salary') && accs.some(a => a.id === 'savings')) {
+    const start = Number(today().slice(8)) <= 5 ? today().slice(0,7) : addMonths(today().slice(0,7), 1);
+    await putIn('rules', {id:'monthly', from:'salary', to:'savings', amount:100000, day:5, on:true, start, skips:[], done:[]});
+  }
+  try { localStorage.setItem('ruleSeeded', '1'); } catch {}
+}
+function upcoming(rule){
+  // next run that is still ahead (today counts) and hasn't happened yet
+  let m = today().slice(0,7); if (m < rule.start) m = rule.start;
+  while (rule.done.includes(m) || ruleDate(m, rule.day) < today()) m = addMonths(m, 1);
+  return m;
+}
+async function renderAuto(){
+  const [rules, accs] = await Promise.all([allOf('rules'), accounts()]);
+  const nm = id => esc(accs.find(a => a.id === id)?.name || 'Deleted account');
+  const r = rules[0];
+  if (!r) { $('#autoCard').innerHTML = `<div class="card auto"><div class="head"><h3>🔁 Monthly automatic transfer</h3><button class="pill" id="ruleEdit">Set up</button></div><div class="meta" style="margin-top:6px">Mirror a standing order from your bank, e.g. salary → savings every month.</div></div>`; return; }
+  const m = upcoming(r), skipped = r.skips.includes(m), when = parseYmd(ruleDate(m, r.day)).toLocaleDateString('en-GB',{day:'numeric', month:'long'});
+  $('#autoCard').innerHTML = `<div class="card auto${state.flashAcc === 'rule' ? ' glow' : ''}">
+    <div class="head"><h3>🔁 Monthly automatic transfer</h3><button class="pill" id="ruleEdit">Edit</button></div>
+    <div class="big num">${jd(r.amount)}</div>
+    <div class="meta">${nm(r.from)} → ${nm(r.to)} · every ${r.day}${[,'st','nd','rd'][r.day % 10 > 3 || [11,12,13].includes(r.day) ? 0 : r.day % 10] || 'th'} of the month${r.on ? '' : ' · <b style="color:var(--danger)">paused</b>'}</div>
+    ${r.on ? `<div class="next${skipped ? ' skipped' : ''}"><span>Next: <b>${when}</b>${skipped ? '<br><span class="meta">Skipped this month</span>' : ''}</span>
+      <button class="pill" id="ruleSkip" data-m="${m}">${skipped ? 'Undo skip' : 'Skip this one'}</button></div>` : ''}
+  </div>`;
+}
+
 async function renderTransfers(){
   const [trs, accs] = await Promise.all([allOf('transfers'), accounts()]);
   const nm = id => esc(accs.find(a => a.id === id)?.name || 'Deleted account');
   const list = trs.sort((a,b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt).slice(0, 15);
   $('#trList').innerHTML = list.length ? list.map(t => `<button class="tr-row${t.id === state.flash ? ' flash' : ''}" data-tr="${t.id}">
       <span class="tr-arrow">⇄</span>
-      <span class="mid"><b>${nm(t.from)} → ${nm(t.to)}</b><span class="meta">${esc(dayLabel(t.date))}${t.note ? ' · ' + esc(t.note) : ''}</span></span>
+      <span class="mid"><b>${nm(t.from)} → ${nm(t.to)}${t.auto ? '<span class="tag">AUTO</span>' : ''}</b><span class="meta">${esc(dayLabel(t.date))}${t.note ? ' · ' + esc(t.note) : ''}</span></span>
       <span class="amt num" style="font-weight:700">${money(t.amount)}</span><span class="edit" style="color:var(--muted);font-size:14px">✎</span></button>`).join('')
     : '<div class="empty" style="padding:16px 8px">No transfers yet. Tap <b>⇄ Transfer</b> when you move money between accounts.</div>';
 }
@@ -1022,7 +1103,7 @@ $('#trForm').addEventListener('submit', async e => {
     return;
   }
   const prev = tr.editing;
-  const t = {id: prev?.id || uid(), amount: parseAmount($('#trAmount').value), from: tr.from, to: tr.to,
+  const t = {...(prev || {}), id: prev?.id || uid(), amount: parseAmount($('#trAmount').value), from: tr.from, to: tr.to,
              date: $('#trDate').value || today(), note: $('#trNote').value.trim(),
              createdAt: prev?.createdAt || Date.now(), updatedAt: Date.now()};
   await putIn('transfers', t);
@@ -1034,6 +1115,57 @@ $('#trForm').addEventListener('submit', async e => {
 $('#trDel').addEventListener('click', async () => {
   if (!tr.editing || !confirm('Delete this transfer?')) return;
   await delFrom('transfers', tr.editing.id); closeTransfer(); toast('Transfer deleted'); render();
+});
+
+/* ---------- automatic transfer actions ---------- */
+const rs = {from:null, to:null, day:5};
+function rulePick(side, id){ rs[side] = id; document.querySelectorAll(side === 'from' ? '#ruleFrom .chip' : '#ruleTo .chip').forEach(c => c.classList.toggle('on', c.dataset.acc === id)); }
+function ruleDayPick(d){ rs.day = d; document.querySelectorAll('#ruleDay .chip').forEach(c => c.classList.toggle('on', Number(c.dataset.d) === d)); }
+async function openRule(){
+  const [rules, accs] = await Promise.all([allOf('rules'), accounts()]);
+  const r = rules[0] || {amount:100000, from:accs[0]?.id, to:accs[1]?.id, day:5, on:true};
+  const chips = accs.map(a => `<button type="button" class="chip" data-acc="${a.id}">${esc(a.name)}</button>`).join('');
+  $('#ruleFrom').innerHTML = chips; $('#ruleTo').innerHTML = chips;
+  $('#ruleDay').innerHTML = Array.from({length:28}, (_, i) => `<button type="button" class="chip" data-d="${i+1}">${i+1}</button>`).join('');
+  $('#ruleAmount').value = (r.amount/100).toFixed(2); $('#ruleOn').checked = r.on; $('#ruleErr').textContent = '';
+  rulePick('from', r.from); rulePick('to', r.to); ruleDayPick(r.day);
+  openLayer($('#ruleWrap'));
+}
+const closeRule = () => { $('#ruleAmount').blur(); closeLayer($('#ruleWrap')); };
+$('#ruleCancel').onclick = closeRule;
+$('#ruleWrap').addEventListener('click', e => { if (e.target.id === 'ruleWrap') closeRule(); });
+$('#ruleFrom').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) rulePick('from', b.dataset.acc); });
+$('#ruleTo').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) rulePick('to', b.dataset.acc); });
+$('#ruleDay').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) ruleDayPick(Number(b.dataset.d)); });
+$('#ruleForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const amount = parseAmount($('#ruleAmount').value);
+  if (amount == null) return $('#ruleErr').textContent = 'Enter an amount like 1000.00';
+  if (!rs.from || !rs.to) return $('#ruleErr').textContent = 'Pick both accounts.';
+  if (rs.from === rs.to) return $('#ruleErr').textContent = 'From and To must be different accounts.';
+  const old = (await allOf('rules'))[0];
+  // changes apply from the next run that hasn't happened yet; past automatic transfers are kept as they are
+  const start = old ? (old.start > today().slice(0,7) ? old.start : today().slice(0,7))
+                    : (Number(today().slice(8)) <= rs.day ? today().slice(0,7) : addMonths(today().slice(0,7), 1));
+  const r = {id: old?.id || 'monthly', amount, from: rs.from, to: rs.to, day: rs.day, on: $('#ruleOn').checked,
+             start, skips: old?.skips || [], done: old?.done || []};
+  // if the chosen day this month has already passed and it hasn't run, don't back-fill it
+  const m = today().slice(0,7);
+  if (!r.done.includes(m) && ruleDate(m, r.day) < today() && (!old || old.day !== r.day)) r.done.push(m);
+  await putIn('rules', r);
+  closeRule();
+  state.flashAcc = 'rule'; setTimeout(() => state.flashAcc = null, 1500);
+  await runAutomations(); toast('Automatic transfer saved'); render();
+});
+$('#autoCard').addEventListener('click', async e => {
+  if (e.target.closest('#ruleEdit')) return openRule();
+  const b = e.target.closest('#ruleSkip'); if (!b) return;
+  const r = (await allOf('rules'))[0]; if (!r) return;
+  const m = b.dataset.m, i = r.skips.indexOf(m);
+  if (i >= 0) r.skips.splice(i, 1); else r.skips.push(m);
+  await putIn('rules', r);
+  toast(i >= 0 ? 'Transfer back on' : 'Skipped for ' + parseYmd(m + '-01').toLocaleDateString('en-GB',{month:'long'}));
+  await runAutomations(); render();
 });
 
 /* ---------- accounts actions ---------- */
@@ -1203,7 +1335,7 @@ $('#expJson').onclick = async () => {
   const entries = await allEntries(), photos = {};
   for (const e of entries) if (e.hasPhoto) { const p = await getPhoto(e.id); if (p) photos[e.id] = await blobToDataUrl(p); }
   const data = {app:'spending-tracker', version:2, exportedAt:new Date().toISOString(), entries, photos,
-                accounts: await allOf('accounts'), checkins: await allOf('checkins'), transfers: await allOf('transfers')};
+                accounts: await allOf('accounts'), checkins: await allOf('checkins'), transfers: await allOf('transfers'), rules: await allOf('rules')};
   deliverFile(`spending-backup-${today()}.json`, new Blob([JSON.stringify(data)], {type:'application/json'}));
 };
 $('#impJson').onclick = () => $('#impFile').click();
@@ -1223,6 +1355,7 @@ $('#impFile').addEventListener('change', async e => {
     for (const a of data.accounts || []) if (a.id && a.name) await putIn('accounts', a);
     for (const c of data.checkins || []) if (c.id && c.account && Number.isInteger(c.amount)) await putIn('checkins', c);
     for (const t of data.transfers || []) if (t.id && t.from && t.to && Number.isInteger(t.amount)) await putIn('transfers', t);
+    for (const r of data.rules || []) if (r.id && r.from && r.to && Number.isInteger(r.amount)) await putIn('rules', {skips:[], done:[], ...r});
     toast(`Restored ${n} entries`); render();
   } catch(err) { alert('Restore failed: ' + err.message); }
 });
@@ -1236,7 +1369,7 @@ $('#installHint').classList.toggle('hidden', isStandalone());
 try { navigator.storage?.persist?.(); } catch {}
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then(r => r.update?.()).catch(() => {});
 /* ---------- auto-update: iPhone often resumes the app without reloading, so check for a newer version on every resume ---------- */
-const APP_VERSION = '2026.11.02-1';
+const APP_VERSION = '2026.11.03-1';
 $('#verLbl').textContent = 'Version ' + APP_VERSION;
 const anyOverlayOpen = () => document.querySelector('.backdrop.open, .scan.open, .viewer.open');
 async function checkForUpdate(){
@@ -1258,8 +1391,8 @@ $('#diagBtn').onclick = async () => {
   $('#diagOut').textContent = text; $('#diagOut').classList.remove('hidden');
   try { await navigator.clipboard.writeText(text); toast('Diagnostics copied'); } catch { toast('Shown below — select and copy'); }
 };
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { render(); checkForUpdate(); } });
-render();
+document.addEventListener('visibilitychange', async () => { if (!document.hidden) { await runAutomations().catch(() => {}); render(); checkForUpdate(); } });
+(async () => { try { await seedRule(); await runAutomations(); } catch (e) { dlog('automation: ' + e.message); } render(); })();
 </script>
 </body>
 </html>
