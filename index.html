@@ -96,6 +96,13 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .sheethead h2{margin:0;font-size:20px}
 .amtwrap{display:flex;align-items:baseline;gap:8px;background:var(--surface);border-radius:16px;padding:10px 16px;box-shadow:var(--shadow)}
 .amtwrap span{font-weight:700;color:var(--accent);font-size:22px}
+.amtwrap .calc-prev{font-size:18px;font-weight:700;color:var(--muted);white-space:nowrap}
+.amtwrap .calc-prev.bad{color:var(--danger)}
+.calcrow{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:8px;max-height:0;overflow:hidden;opacity:0;transition:max-height .2s ease,opacity .2s ease}
+.calcrow.show{max-height:60px;opacity:1}
+.calcrow button{background:var(--surface);box-shadow:var(--shadow);border-radius:12px;padding:10px 0;font-size:20px;font-weight:700;color:var(--accent)}
+.calcrow button:active{transform:scale(.92);background:var(--surface-2)}
+.calcrow button.eq{background:var(--accent);color:var(--accent-ink)}
 .amtwrap input{flex:1;min-width:0;border:0;background:none;color:var(--text);caret-color:var(--accent);font-size:40px;font-weight:700;outline:none;padding:0}
 .label{font-size:13px;color:var(--muted);margin:14px 2px 6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
 .cats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -319,7 +326,8 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
     <div class="grab"></div>
     <div class="sheethead"><h2 id="sheetTitle">New expense</h2><button type="button" class="pill" id="cancel">Cancel</button></div>
     <div class="label" id="lblAmount">Amount<span class="req">*</span></div>
-    <div class="amtwrap" id="amtWrap"><span>JD</span><input id="amount" inputmode="decimal" placeholder="0.00" aria-label="Amount in Jordanian dinars"></div>
+    <div class="amtwrap" id="amtWrap"><span>JD</span><input id="amount" inputmode="decimal" placeholder="0.00" aria-label="Amount in Jordanian dinars"><span class="calc-prev hidden"></span></div>
+    <div class="calcrow" data-for="amount"><button type="button" data-k="+">+</button><button type="button" data-k="−">−</button><button type="button" data-k="×">×</button><button type="button" data-k="÷">÷</button><button type="button" data-k="⌫">⌫</button><button type="button" class="eq" data-k="=">=</button></div>
     <div class="label" id="lblCat">Category<span class="req">*</span></div>
     <div class="cats" id="cats"></div>
     <div id="accWrap"><div class="label" id="lblAcc">Paid from<span class="req">*</span></div><div class="acc-chips" id="accChips"></div></div>
@@ -348,7 +356,8 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
     <div class="grab"></div>
     <div class="sheethead"><h2 id="cbTitle">Withdraw cashback</h2><button type="button" class="pill" id="cbCancel">Cancel</button></div>
     <div class="label" id="lblCbAmt">Amount<span class="req">*</span></div>
-    <div class="amtwrap" id="cbAmtWrap"><span>JD</span><input id="cbAmount" inputmode="decimal" placeholder="0.00" aria-label="Cashback amount"></div>
+    <div class="amtwrap" id="cbAmtWrap"><span>JD</span><input id="cbAmount" inputmode="decimal" placeholder="0.00" aria-label="Cashback amount"><span class="calc-prev hidden"></span></div>
+    <div class="calcrow" data-for="cbAmount"><button type="button" data-k="+">+</button><button type="button" data-k="−">−</button><button type="button" data-k="×">×</button><button type="button" data-k="÷">÷</button><button type="button" data-k="⌫">⌫</button><button type="button" class="eq" data-k="=">=</button></div>
     <div class="label" id="lblCbTo">Into<span class="req">*</span></div><div class="acc-chips" id="cbTo"></div>
     <div class="label">Date</div><input type="date" class="field" id="cbDate">
     <div class="label">Note (optional)</div><input class="field" id="cbNote" placeholder="e.g. October cashback" maxlength="140">
@@ -379,7 +388,8 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
     <div class="grab"></div>
     <div class="sheethead"><h2 id="trTitle">Transfer</h2><button type="button" class="pill" id="trCancel">Cancel</button></div>
     <div class="label" id="lblTrAmt">Amount<span class="req">*</span></div>
-    <div class="amtwrap" id="trAmtWrap"><span>JD</span><input id="trAmount" inputmode="decimal" placeholder="0.00" aria-label="Transfer amount in Jordanian dinars"></div>
+    <div class="amtwrap" id="trAmtWrap"><span>JD</span><input id="trAmount" inputmode="decimal" placeholder="0.00" aria-label="Transfer amount in Jordanian dinars"><span class="calc-prev hidden"></span></div>
+    <div class="calcrow" data-for="trAmount"><button type="button" data-k="+">+</button><button type="button" data-k="−">−</button><button type="button" data-k="×">×</button><button type="button" data-k="÷">÷</button><button type="button" data-k="⌫">⌫</button><button type="button" class="eq" data-k="=">=</button></div>
     <div class="label" id="lblTrFrom">From<span class="req">*</span></div>
     <div class="acc-chips" id="trFrom"></div>
     <div class="label" id="lblTrTo">To<span class="req">*</span></div>
@@ -463,8 +473,43 @@ function dayLabel(s){
   return parseYmd(s).toLocaleDateString('en-GB',{weekday:'short', day:'numeric', month:'short', year: s.slice(0,4)===today().slice(0,4)?undefined:'numeric'});
 }
 /* "3.5", "3,50", "12" -> integer piasters (x100); null if invalid */
+/* ---------- calculator: amounts can be typed as sums like 2+0.5 or 5×10 ---------- */
+const resetCalc = () => document.querySelectorAll('.calc-prev').forEach(p => p.classList.add('hidden'));
+const isExpr = str => /[+\-*/×x÷−()]/i.test(String(str).trim().replace(/^-/, ''));
+/* safe evaluator (no eval): numbers, + − × ÷, parentheses, normal precedence; returns a number or null */
+function evalExpr(str){
+  const src = String(str).replace(/\s+/g,'').replace(/,/g,'.').replace(/[×xX]/g,'*').replace(/÷/g,'/').replace(/−/g,'-');
+  let i = 0;
+  const peek = () => src[i];
+  function num(){
+    const m = /^(\d+\.?\d*|\.\d+)/.exec(src.slice(i)); if (!m) throw 0;
+    i += m[0].length; return parseFloat(m[0]);
+  }
+  function factor(){
+    if (peek() === '-') { i++; return -factor(); }
+    if (peek() === '+') { i++; return factor(); }
+    if (peek() === '(') { i++; const v = expr(); if (peek() !== ')') throw 0; i++; return v; }
+    return num();
+  }
+  function term(){
+    let v = factor();
+    while (peek() === '*' || peek() === '/') { const op = src[i++]; const r = factor(); if (op === '/' && r === 0) throw 0; v = op === '*' ? v * r : v / r; }
+    return v;
+  }
+  function expr(){
+    let v = term();
+    while (peek() === '+' || peek() === '-') { const op = src[i++]; const r = term(); v = op === '+' ? v + r : v - r; }
+    return v;
+  }
+  try { if (!src) return null; const v = expr(); return i === src.length && isFinite(v) ? v : null; } catch { return null; }
+}
 function parseAmount(str){
   const s = String(str).trim().replace(',', '.');
+  if (isExpr(s)) {                                   // calculation → result rounded to 2 decimals
+    const v = evalExpr(s); if (v == null) return null;
+    const minor = Math.round(v * 100 + 1e-9);
+    return minor > 0 && minor < 1e9 ? minor : null;
+  }
   if (!/^\d{1,7}(\.\d{0,2})?$/.test(s) && !/^\.\d{1,2}$/.test(s)) return null;
   const v = Math.round(parseFloat(s) * 100);
   return v > 0 ? v : null;
@@ -804,6 +849,7 @@ async function renderAccChips(selected){
   pickAcc(selected && accs.some(a => a.id === selected) ? selected : null);
 }
 async function openSheet(entry){
+  resetCalc();
   state.editing = entry || null; state.photo = undefined;
   clearMissing();
   $('#sheetTitle').textContent = entry ? 'Edit expense' : 'New expense';
@@ -1034,7 +1080,7 @@ $('#form').addEventListener('submit', async e => {
     clearMissing();
     const map = {amount:['#lblAmount','#amtWrap'], cat:['#lblCat','#cats'], acc:['#lblAcc','#accChips']};
     miss.forEach(k => map[k].forEach(q => $(q).classList.add('missing')));
-    const names = {amount: $('#amount').value.trim() ? 'a valid amount (e.g. 3.50, max 2 decimals)' : 'the amount', cat:'a category', acc:'which account paid'};
+    const names = {amount: !$('#amount').value.trim() ? 'the amount' : isExpr($('#amount').value) ? 'a calculation that gives a positive amount' : 'a valid amount (e.g. 3.50, max 2 decimals)', cat:'a category', acc:'which account paid'};
     const noAccounts = miss.includes('acc') && !document.querySelector('#accChips .chip');
     $('#err').textContent = noAccounts ? 'Add an account in the Accounts tab first.' : 'Still needed: ' + miss.map(k => names[k]).join(', ') + '.';
     replay($('#form'), 'shake');
@@ -1090,6 +1136,7 @@ function trPick(side, id){
   $('#trErr').textContent = ''; trUpdate();
 }
 async function openTransfer(t){
+  resetCalc();
   tr.editing = t || null;
   $('#trTitle').textContent = t ? 'Edit transfer' : 'Transfer';
   $('#trAmount').value = t ? (t.amount/100).toFixed(2) : '';
@@ -1160,6 +1207,7 @@ function cbIssues(){ const m = []; if (parseAmount($('#cbAmount').value) == null
 const cbUpdate = () => $('#cbSave').classList.toggle('off', cbIssues().length > 0);
 function cbPick(id){ cbs.to = id; document.querySelectorAll('#cbTo .chip').forEach(c => c.classList.toggle('on', c.dataset.acc === id)); ['#lblCbTo','#cbTo'].forEach(q => $(q).classList.remove('missing')); cbUpdate(); }
 async function openCashback(c){
+  resetCalc();
   cbs.editing = c || null;
   $('#cbTitle').textContent = c ? 'Edit cashback' : 'Withdraw cashback';
   $('#cbAmount').value = c ? (c.amount/100).toFixed(2) : '';
@@ -1452,6 +1500,41 @@ $('#impFile').addEventListener('change', async e => {
   } catch(err) { alert('Restore failed: ' + err.message); }
 });
 
+/* ---------- calculator wiring ---------- */
+function setupCalc(input){
+  const row = document.querySelector(`.calcrow[data-for="${input.id}"]`);
+  const prev = input.parentElement.querySelector('.calc-prev');
+  const fire = () => input.dispatchEvent(new Event('input', {bubbles:true}));
+  const preview = () => {
+    const v = input.value;
+    if (!isExpr(v)) { prev.classList.add('hidden'); return; }
+    const r = parseAmount(v);
+    prev.classList.remove('hidden'); prev.classList.toggle('bad', r == null);
+    prev.textContent = r == null ? '= ?' : '= ' + money(r);
+  };
+  const settle = () => { if (isExpr(input.value)) { const r = parseAmount(input.value); if (r != null) { input.value = (r/100).toFixed(2); fire(); } } preview(); };
+  input.addEventListener('input', preview);
+  input.addEventListener('focus', () => row.classList.add('show'));
+  input.addEventListener('blur', () => { settle(); setTimeout(() => { if (document.activeElement !== input) row.classList.remove('show'); }, 150); });
+  input.addEventListener('keydown', e => { if (e.key === '=' ) { e.preventDefault(); settle(); } });
+  // keep the keyboard open: act on pointerdown and cancel the focus change
+  row.addEventListener('pointerdown', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    e.preventDefault();
+    const k = b.dataset.k, a = input.selectionStart ?? input.value.length, z = input.selectionEnd ?? a;
+    if (k === '=') settle();
+    else if (k === '⌫') {
+      const from = a === z ? Math.max(0, a - 1) : a;
+      input.value = input.value.slice(0, from) + input.value.slice(z); input.setSelectionRange(from, from); fire();
+    } else {
+      input.value = input.value.slice(0, a) + k + input.value.slice(z); input.setSelectionRange(a + 1, a + 1); fire();
+    }
+    if (document.activeElement !== input) input.focus({preventScroll:true});
+  });
+  row.addEventListener('click', e => e.preventDefault());
+}
+['amount','trAmount','cbAmount'].forEach(id => setupCalc(document.getElementById(id)));
+
 /* ---------- startup ---------- */
 applyMotion();
 rmQuery.addEventListener?.('change', applyMotion);
@@ -1461,7 +1544,7 @@ $('#installHint').classList.toggle('hidden', isStandalone());
 try { navigator.storage?.persist?.(); } catch {}
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then(r => r.update?.()).catch(() => {});
 /* ---------- auto-update: iPhone often resumes the app without reloading, so check for a newer version on every resume ---------- */
-const APP_VERSION = '2026.11.03-2';
+const APP_VERSION = '2026.11.05-1';
 $('#verLbl').textContent = 'Version ' + APP_VERSION;
 const anyOverlayOpen = () => document.querySelector('.backdrop.open, .scan.open, .viewer.open');
 async function checkForUpdate(){
