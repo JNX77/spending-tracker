@@ -98,7 +98,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .amtwrap span{font-weight:700;color:var(--accent);font-size:22px}
 .amtwrap .calc-prev{font-size:18px;font-weight:700;color:var(--muted);white-space:nowrap}
 .amtwrap .calc-prev.bad{color:var(--danger)}
-.calcrow{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:8px;max-height:0;overflow:hidden;opacity:0;transition:max-height .2s ease,opacity .2s ease}
+.calcrow{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:8px;max-height:0;overflow:hidden;opacity:0;transition:max-height .2s ease,opacity .2s ease}
 .calcrow.show{max-height:60px;opacity:1}
 .calcrow button{background:var(--surface);box-shadow:var(--shadow);border-radius:12px;padding:10px 0;font-size:20px;font-weight:700;color:var(--accent)}
 .calcrow button:active{transform:scale(.92);background:var(--surface-2)}
@@ -327,7 +327,7 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
     <div class="sheethead"><h2 id="sheetTitle">New expense</h2><button type="button" class="pill" id="cancel">Cancel</button></div>
     <div class="label" id="lblAmount">Amount<span class="req">*</span></div>
     <div class="amtwrap" id="amtWrap"><span>JD</span><input id="amount" inputmode="decimal" placeholder="0.00" aria-label="Amount in Jordanian dinars"><span class="calc-prev hidden"></span></div>
-    <div class="calcrow" data-for="amount"><button type="button" data-k="+">+</button><button type="button" data-k="−">−</button><button type="button" data-k="×">×</button><button type="button" data-k="÷">÷</button><button type="button" data-k="⌫">⌫</button><button type="button" class="eq" data-k="=">=</button></div>
+    <div class="calcrow" data-for="amount"><button type="button" data-k="+">+</button><button type="button" data-k="−">−</button><button type="button" data-k="×">×</button><button type="button" data-k="÷">÷</button><button type="button" data-k="()">( )</button><button type="button" data-k="⌫">⌫</button><button type="button" class="eq" data-k="=">=</button></div>
     <div class="label" id="lblCat">Category<span class="req">*</span></div>
     <div class="cats" id="cats"></div>
     <div id="accWrap"><div class="label" id="lblAcc">Paid from<span class="req">*</span></div><div class="acc-chips" id="accChips"></div></div>
@@ -357,7 +357,7 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
     <div class="sheethead"><h2 id="cbTitle">Withdraw cashback</h2><button type="button" class="pill" id="cbCancel">Cancel</button></div>
     <div class="label" id="lblCbAmt">Amount<span class="req">*</span></div>
     <div class="amtwrap" id="cbAmtWrap"><span>JD</span><input id="cbAmount" inputmode="decimal" placeholder="0.00" aria-label="Cashback amount"><span class="calc-prev hidden"></span></div>
-    <div class="calcrow" data-for="cbAmount"><button type="button" data-k="+">+</button><button type="button" data-k="−">−</button><button type="button" data-k="×">×</button><button type="button" data-k="÷">÷</button><button type="button" data-k="⌫">⌫</button><button type="button" class="eq" data-k="=">=</button></div>
+    <div class="calcrow" data-for="cbAmount"><button type="button" data-k="+">+</button><button type="button" data-k="−">−</button><button type="button" data-k="×">×</button><button type="button" data-k="÷">÷</button><button type="button" data-k="()">( )</button><button type="button" data-k="⌫">⌫</button><button type="button" class="eq" data-k="=">=</button></div>
     <div class="label" id="lblCbTo">Into<span class="req">*</span></div><div class="acc-chips" id="cbTo"></div>
     <div class="label">Date</div><input type="date" class="field" id="cbDate">
     <div class="label">Note (optional)</div><input class="field" id="cbNote" placeholder="e.g. October cashback" maxlength="140">
@@ -389,7 +389,7 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
     <div class="sheethead"><h2 id="trTitle">Transfer</h2><button type="button" class="pill" id="trCancel">Cancel</button></div>
     <div class="label" id="lblTrAmt">Amount<span class="req">*</span></div>
     <div class="amtwrap" id="trAmtWrap"><span>JD</span><input id="trAmount" inputmode="decimal" placeholder="0.00" aria-label="Transfer amount in Jordanian dinars"><span class="calc-prev hidden"></span></div>
-    <div class="calcrow" data-for="trAmount"><button type="button" data-k="+">+</button><button type="button" data-k="−">−</button><button type="button" data-k="×">×</button><button type="button" data-k="÷">÷</button><button type="button" data-k="⌫">⌫</button><button type="button" class="eq" data-k="=">=</button></div>
+    <div class="calcrow" data-for="trAmount"><button type="button" data-k="+">+</button><button type="button" data-k="−">−</button><button type="button" data-k="×">×</button><button type="button" data-k="÷">÷</button><button type="button" data-k="()">( )</button><button type="button" data-k="⌫">⌫</button><button type="button" class="eq" data-k="=">=</button></div>
     <div class="label" id="lblTrFrom">From<span class="req">*</span></div>
     <div class="acc-chips" id="trFrom"></div>
     <div class="label" id="lblTrTo">To<span class="req">*</span></div>
@@ -1526,6 +1526,15 @@ function setupCalc(input){
     else if (k === '⌫') {
       const from = a === z ? Math.max(0, a - 1) : a;
       input.value = input.value.slice(0, from) + input.value.slice(z); input.setSelectionRange(from, from); fire();
+    } else if (k === '()') {
+      const v = input.value;
+      if (a === z && v[a] === ')') { input.setSelectionRange(a + 1, a + 1); }        // already inside brackets: tap again to step out
+      else {                                                                          // add "()" (or wrap the selection) and put the cursor inside
+        const inner = v.slice(a, z);
+        input.value = v.slice(0, a) + '(' + inner + ')' + v.slice(z);
+        const pos = inner ? a + inner.length + 2 : a + 1;
+        input.setSelectionRange(pos, pos); fire();
+      }
     } else {
       input.value = input.value.slice(0, a) + k + input.value.slice(z); input.setSelectionRange(a + 1, a + 1); fire();
     }
@@ -1544,7 +1553,7 @@ $('#installHint').classList.toggle('hidden', isStandalone());
 try { navigator.storage?.persist?.(); } catch {}
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then(r => r.update?.()).catch(() => {});
 /* ---------- auto-update: iPhone often resumes the app without reloading, so check for a newer version on every resume ---------- */
-const APP_VERSION = '2026.11.05-1';
+const APP_VERSION = '2026.11.05-2';
 $('#verLbl').textContent = 'Version ' + APP_VERSION;
 const anyOverlayOpen = () => document.querySelector('.backdrop.open, .scan.open, .viewer.open');
 async function checkForUpdate(){
