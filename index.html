@@ -285,8 +285,15 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
       <div class="stat" style="box-shadow:none;background:var(--surface-2)"><span class="meta">All time</span><b class="num" id="cbAll"></b></div></div>
     <div id="cbList"></div>
   </div>
+  <div class="card auto" id="ivCard" style="margin-top:12px">
+    <div class="head"><h3>📈 Investments</h3><button class="pill" id="ivNew">+ Invest</button></div>
+    <div class="meta" style="margin-top:6px">Money you move to your investment account. It leaves Salary/Savings and isn't tracked after that.</div>
+    <div class="stats" style="margin:12px 0 4px"><div class="stat" style="box-shadow:none;background:var(--surface-2)"><span class="meta">This month</span><b class="num" id="ivMonth"></b></div>
+      <div class="stat" style="box-shadow:none;background:var(--surface-2)"><span class="meta">All time</span><b class="num" id="ivAll"></b></div></div>
+    <div id="ivList"></div>
+  </div>
   <div class="card" id="trCard" style="margin-top:12px"><div class="meta">Recent transfers</div><div id="trList"></div></div>
-  <div class="meta" style="text-align:center;margin:14px 8px 0">Enter what your bank app shows at the start of the month or when your salary lands. Expenses you log are subtracted from the account they were paid from, and transfers move money between accounts, so you can see if the numbers match your bank.</div>
+  <div class="meta" style="text-align:center;margin:14px 8px 0">Enter what your bank app shows at the start of the month or when your salary lands. Expenses you log are subtracted from the account they were paid from, transfers move money between accounts, and investments leave the account they came from, so you can see if the numbers match your bank.</div>
 </section>
 
 <!-- SETTINGS VIEW -->
@@ -363,6 +370,22 @@ input[type=date].field{-webkit-appearance:none;appearance:none;min-height:46px}
     <div class="label">Note (optional)</div><input class="field" id="cbNote" placeholder="e.g. October cashback" maxlength="140">
     <div class="err" id="cbErr"></div>
     <div class="actions"><button type="button" class="danger hidden" id="cbDel">Delete</button><button type="submit" class="primary off" id="cbSave">Add to account</button></div>
+  </form>
+</div>
+
+<!-- INVESTMENT SHEET -->
+<div class="backdrop hidden" id="ivWrap">
+  <form class="sheet" id="ivForm" autocomplete="off" novalidate>
+    <div class="grab"></div>
+    <div class="sheethead"><h2 id="ivTitle">Move to investments</h2><button type="button" class="pill" id="ivCancel">Cancel</button></div>
+    <div class="label" id="lblIvAmt">Amount<span class="req">*</span></div>
+    <div class="amtwrap" id="ivAmtWrap"><span>JD</span><input id="ivAmount" inputmode="decimal" placeholder="0.00" aria-label="Amount to invest"><span class="calc-prev hidden"></span></div>
+    <div class="calcrow" data-for="ivAmount"><button type="button" data-k="+">+</button><button type="button" data-k="−">−</button><button type="button" data-k="×">×</button><button type="button" data-k="÷">÷</button><button type="button" data-k="()">( )</button><button type="button" class="eq" data-k="=">=</button></div>
+    <div class="label" id="lblIvFrom">From<span class="req">*</span></div><div class="acc-chips" id="ivFrom"></div>
+    <div class="label">Date</div><input type="date" class="field" id="ivDate">
+    <div class="label">Note (optional)</div><input class="field" id="ivNote" placeholder="e.g. Monthly investment" maxlength="140">
+    <div class="err" id="ivErr"></div>
+    <div class="actions"><button type="button" class="danger hidden" id="ivDel">Delete</button><button type="submit" class="primary off" id="ivSave">Move to investments</button></div>
   </form>
 </div>
 
@@ -561,7 +584,7 @@ function countTo(el, minor){
 let dbP;
 function db(){
   return dbP ||= new Promise((res, rej) => {
-    const r = indexedDB.open('spending', 5);
+    const r = indexedDB.open('spending', 6);
     r.onupgradeneeded = ev => {
       const d = r.result, old = ev.oldVersion;
       if (old < 1) {
@@ -577,6 +600,7 @@ function db(){
       if (old < 3) d.createObjectStore('transfers', {keyPath:'id'});
       if (old < 4) d.createObjectStore('rules', {keyPath:'id'});
       if (old < 5) d.createObjectStore('cashback', {keyPath:'id'});
+      if (old < 6) d.createObjectStore('investments', {keyPath:'id'});
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -684,7 +708,7 @@ async function renderMonth(){
 /* Expected balance = last bank balance − expenses paid from that account logged after it */
 const afterCheckin = (e, c) => e.date > c.date || (e.date === c.date && e.createdAt > c.at);
 async function accountStatus(){
-  const [accs, cks, ents, trs, cbs] = await Promise.all([accounts(), allOf('checkins'), allEntries(), allOf('transfers'), allOf('cashback')]);
+  const [accs, cks, ents, trs, cbs, ivs] = await Promise.all([accounts(), allOf('checkins'), allEntries(), allOf('transfers'), allOf('cashback'), allOf('investments')]);
   const def = accs[0]?.id;
   return accs.map(a => {
     const mine = cks.filter(c => c.account === a.id).sort((x,y) => x.at - y.at);
@@ -695,7 +719,8 @@ async function accountStatus(){
     const tin  = recent.filter(t => t.to === a.id).reduce((s,t) => s + t.amount, 0);
     const tout = recent.filter(t => t.from === a.id).reduce((s,t) => s + t.amount, 0);
     const cb = cbs.filter(c => c.to === a.id && afterCheckin(c, last)).reduce((s,c) => s + c.amount, 0);
-    return {a, last, spent, tin, tout, cb, expected: last.amount - spent + tin - tout + cb, hist: mine.slice(-5).reverse()};
+    const inv = ivs.filter(c => c.from === a.id && afterCheckin(c, last)).reduce((s,c) => s + c.amount, 0);
+    return {a, last, spent, tin, tout, cb, inv, expected: last.amount - spent + tin - tout + cb - inv, hist: mine.slice(-5).reverse()};
   });
 }
 async function renderAccounts(){
@@ -704,7 +729,7 @@ async function renderAccounts(){
   const total = withBal.reduce((s,x) => s + x.expected, 0);
   countTo($('#accTotal'), total);
   $('#accTotalMeta').textContent = withBal.length ? `Tracked spending since last updates: ${jd(withBal.reduce((s,x)=>s+x.spent,0))}` : 'Add a balance to an account to start.';
-  $('#accList').innerHTML = st.map(({a, last, spent, tin, tout, cb, expected, hist}) => {
+  $('#accList').innerHTML = st.map(({a, last, spent, tin, tout, cb, inv, expected, hist}) => {
     const name = `<div class="head"><h3>🏦 ${esc(a.name)}</h3><button class="pill" data-bal="${a.id}">Update balance</button></div>`;
     const links = `<div class="linkrow"><button class="linkbtn" data-ren="${a.id}">Rename</button><button class="linkbtn" data-delacc="${a.id}">Delete</button></div>`;
     if (!last) return `<div class="card acct">${name}<div class="meta" style="margin-top:8px">No balance yet — tap <b>Update balance</b> and enter what your bank app shows.</div>${links}</div>`;
@@ -722,11 +747,12 @@ async function renderAccounts(){
       <div class="meta" style="margin-top:10px">Should have now</div>
       <div class="exp num ${expected < 0 ? 'neg' : ''}"><small>JD</small>${money(expected)}</div>
       <div class="track"><div class="fill" style="width:${pct}%"></div></div>
-      <div class="meta">Last bank balance ${jd(last.amount)} (${esc(dayLabel(last.date))}) · spent since: ${jd(spent)}${tin ? ` · transfers in: +${money(tin)}` : ''}${tout ? ` · transfers out: −${money(tout)}` : ''}${cb ? ` · cashback: +${money(cb)}` : ''}</div>
+      <div class="meta">Last bank balance ${jd(last.amount)} (${esc(dayLabel(last.date))}) · spent since: ${jd(spent)}${tin ? ` · transfers in: +${money(tin)}` : ''}${tout ? ` · transfers out: −${money(tout)}` : ''}${cb ? ` · cashback: +${money(cb)}` : ''}${inv ? ` · invested: −${money(inv)}` : ''}</div>
       <div style="margin-top:10px">${rows}</div>${links}</div>`;
   }).join('');
   await renderAuto();
   await renderCashback();
+  await renderInvest();
   await renderTransfers();
 }
 /* ---------- monthly automatic transfer (mirrors the bank's standing order) ----------
@@ -1253,6 +1279,70 @@ $('#cbDel').addEventListener('click', async () => {
   await delFrom('cashback', cbs.editing.id); closeCashback(); toast('Cashback deleted'); render();
 });
 
+/* ---------- investments (money moved out to the investment account; only the outflow is tracked) ---------- */
+async function renderInvest(){
+  const [ivl, accs] = await Promise.all([allOf('investments'), accounts()]);
+  const nm = id => esc(accs.find(a => a.id === id)?.name || 'Deleted account');
+  const m = today().slice(0,7);
+  $('#ivMonth').textContent = jd(ivl.filter(c => c.date.startsWith(m)).reduce((s,c) => s + c.amount, 0));
+  $('#ivAll').textContent = jd(ivl.reduce((s,c) => s + c.amount, 0));
+  const list = ivl.sort((a,b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt).slice(0, 6);
+  $('#ivList').innerHTML = list.map(c => `<button class="tr-row${c.id === state.flash ? ' flash' : ''}" data-iv="${c.id}">
+      <span class="tr-arrow">📈</span>
+      <span class="mid"><b>${nm(c.from)} → Investments</b><span class="meta">${esc(dayLabel(c.date))}${c.note ? ' · ' + esc(c.note) : ''}</span></span>
+      <span class="amt num" style="font-weight:700">−${money(c.amount)}</span><span class="edit" style="color:var(--muted);font-size:14px">✎</span></button>`).join('');
+}
+const ivs = {editing:null, from:null};
+function ivIssues(){ const m = []; if (parseAmount($('#ivAmount').value) == null) m.push('amt'); if (!ivs.from) m.push('to'); return m; }
+const ivUpdate = () => $('#ivSave').classList.toggle('off', ivIssues().length > 0);
+function ivPick(id){ ivs.from = id; document.querySelectorAll('#ivFrom .chip').forEach(c => c.classList.toggle('on', c.dataset.acc === id)); ['#lblIvFrom','#ivFrom'].forEach(q => $(q).classList.remove('missing')); ivUpdate(); }
+async function openInvest(c){
+  resetCalc();
+  ivs.editing = c || null;
+  $('#ivTitle').textContent = c ? 'Edit investment' : 'Move to investments';
+  $('#ivAmount').value = c ? (c.amount/100).toFixed(2) : '';
+  $('#ivNote').value = c?.note || '';
+  $('#ivDate').value = c?.date || today(); $('#ivDate').max = today();
+  $('#ivErr').textContent = ''; $('#ivDel').classList.toggle('hidden', !c);
+  ['#lblIvAmt','#ivAmtWrap','#lblIvFrom','#ivFrom'].forEach(q => $(q).classList.remove('missing'));
+  if (!c) { openLayer($('#ivWrap')); $('#ivAmount').focus({preventScroll:true}); }
+  const accs = await accounts();
+  $('#ivFrom').innerHTML = accs.map(a => `<button type="button" class="chip" data-acc="${a.id}">${esc(a.name)}</button>`).join('') || '<span class="meta">Add accounts first.</span>';
+  let last = null; try { last = localStorage.getItem('ivFrom'); } catch {}
+  const pick = [c?.from, last, accs.find(a => a.id === 'savings')?.id, accs[0]?.id].find(id => id && accs.some(a => a.id === id)) || null;
+  ivPick(pick);   // remembers the last account used
+  if (c) openLayer($('#ivWrap'));
+}
+const closeInvest = () => { $('#ivAmount').blur(); closeLayer($('#ivWrap')); };
+$('#ivNew').onclick = () => openInvest();
+$('#ivCancel').onclick = closeInvest;
+$('#ivWrap').addEventListener('click', e => { if (e.target.id === 'ivWrap') closeInvest(); });
+$('#ivFrom').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) ivPick(b.dataset.acc); });
+$('#ivAmount').addEventListener('input', () => { if (parseAmount($('#ivAmount').value) != null) ['#lblIvAmt','#ivAmtWrap'].forEach(q => $(q).classList.remove('missing')); ivUpdate(); });
+$('#ivList').addEventListener('click', async e => { const b = e.target.closest('[data-iv]'); if (b) openInvest((await allOf('investments')).find(c => c.id === b.dataset.iv)); });
+$('#ivForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const miss = ivIssues();
+  if (miss.length) {
+    const map = {amt:['#lblIvAmt','#ivAmtWrap'], to:['#lblIvFrom','#ivFrom']};
+    miss.forEach(k => map[k].forEach(q => $(q).classList.add('missing')));
+    $('#ivErr').textContent = 'Still needed: ' + miss.map(k => k === 'amt' ? ($('#ivAmount').value.trim() ? 'a valid amount (max 2 decimals)' : 'the amount') : 'which account it comes from').join(', ') + '.';
+    replay($('#ivForm'), 'shake'); return;
+  }
+  const prev = ivs.editing;
+  const c = {...(prev || {}), id: prev?.id || uid(), amount: parseAmount($('#ivAmount').value), from: ivs.from,
+             date: $('#ivDate').value || today(), note: $('#ivNote').value.trim(), createdAt: prev?.createdAt || Date.now(), updatedAt: Date.now()};
+  await putIn('investments', c);
+  try { localStorage.setItem('ivFrom', c.from); } catch {}
+  closeInvest();
+  state.flash = c.id; setTimeout(() => state.flash = null, 1200);
+  toast(prev ? 'Investment updated' : `${jd(c.amount)} moved to investments`); render();
+});
+$('#ivDel').addEventListener('click', async () => {
+  if (!ivs.editing || !confirm('Delete this investment transfer?')) return;
+  await delFrom('investments', ivs.editing.id); closeInvest(); toast('Investment transfer deleted'); render();
+});
+
 /* ---------- automatic transfer actions ---------- */
 const rs = {from:null, to:null, day:5};
 function rulePick(side, id){ rs[side] = id; document.querySelectorAll(side === 'from' ? '#ruleFrom .chip' : '#ruleTo .chip').forEach(c => c.classList.toggle('on', c.dataset.acc === id)); }
@@ -1464,6 +1554,9 @@ $('#expXlsx').onclick = async () => {
   const cbRows = [['Date','Into','Amount (JOD)','Note']];
   (await allOf('cashback')).sort((a,b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt).forEach(c => cbRows.push([c.date, accName(c.to), c.amount/100, c.note || '']));
   X.utils.book_append_sheet(wb, makeSheet(X, cbRows, [12,18,13,30], [2], [0]), 'Cashback');
+  const ivRows = [['Date','From','Amount (JOD)','Note']];
+  (await allOf('investments')).sort((a,b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt).forEach(c => ivRows.push([c.date, accName(c.from), c.amount/100, c.note || '']));
+  X.utils.book_append_sheet(wb, makeSheet(X, ivRows, [12,18,13,30], [2], [0]), 'Investments');
   X.utils.book_append_sheet(wb, makeSheet(X, bal, [12,18,18,18,16,16], [2,3,4], [0]), 'Balance updates');
   const buf = X.write(wb, {bookType:'xlsx', type:'array', cellDates:true});
   deliverFile(`spending-${today()}.xlsx`, new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
@@ -1474,7 +1567,7 @@ $('#expJson').onclick = async () => {
   const entries = await allEntries(), photos = {};
   for (const e of entries) if (e.hasPhoto) { const p = await getPhoto(e.id); if (p) photos[e.id] = await blobToDataUrl(p); }
   const data = {app:'spending-tracker', version:2, exportedAt:new Date().toISOString(), entries, photos,
-                accounts: await allOf('accounts'), checkins: await allOf('checkins'), transfers: await allOf('transfers'), rules: await allOf('rules'), cashback: await allOf('cashback')};
+                accounts: await allOf('accounts'), checkins: await allOf('checkins'), transfers: await allOf('transfers'), rules: await allOf('rules'), cashback: await allOf('cashback'), investments: await allOf('investments')};
   deliverFile(`spending-backup-${today()}.json`, new Blob([JSON.stringify(data)], {type:'application/json'}));
 };
 $('#impJson').onclick = () => $('#impFile').click();
@@ -1496,6 +1589,7 @@ $('#impFile').addEventListener('change', async e => {
     for (const t of data.transfers || []) if (t.id && t.from && t.to && Number.isInteger(t.amount)) await putIn('transfers', t);
     for (const r of data.rules || []) if (r.id && r.from && r.to && Number.isInteger(r.amount)) await putIn('rules', {skips:[], done:[], ...r});
     for (const c of data.cashback || []) if (c.id && c.to && Number.isInteger(c.amount)) await putIn('cashback', c);
+    for (const c of data.investments || []) if (c.id && c.from && Number.isInteger(c.amount)) await putIn('investments', c);
     toast(`Restored ${n} entries`); render();
   } catch(err) { alert('Restore failed: ' + err.message); }
 });
@@ -1542,7 +1636,7 @@ function setupCalc(input){
   });
   row.addEventListener('click', e => e.preventDefault());
 }
-['amount','trAmount','cbAmount'].forEach(id => setupCalc(document.getElementById(id)));
+['amount','trAmount','cbAmount','ivAmount'].forEach(id => setupCalc(document.getElementById(id)));
 
 /* ---------- startup ---------- */
 applyMotion();
@@ -1553,7 +1647,7 @@ $('#installHint').classList.toggle('hidden', isStandalone());
 try { navigator.storage?.persist?.(); } catch {}
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then(r => r.update?.()).catch(() => {});
 /* ---------- auto-update: iPhone often resumes the app without reloading, so check for a newer version on every resume ---------- */
-const APP_VERSION = '2026.11.05-3';
+const APP_VERSION = '2026.11.06-1';
 $('#verLbl').textContent = 'Version ' + APP_VERSION;
 const anyOverlayOpen = () => document.querySelector('.backdrop.open, .scan.open, .viewer.open');
 async function checkForUpdate(){
